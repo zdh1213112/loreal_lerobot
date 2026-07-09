@@ -59,7 +59,7 @@ class DHGripperIntegratedConfig:
     slave_id: int = 1
     baudrate: int = 115200
     gripper_speed: int = 0      # does not take effect
-    gripper_force: int = 20
+    gripper_force: int = 15
     init_open: bool = True
     init_timeout: float = 10.0
     worker_frequency: float = 100.0

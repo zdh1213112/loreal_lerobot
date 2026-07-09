@@ -226,6 +226,88 @@ def _format_slow_frame_obs_suffix(robot: Robot | None) -> str:
     return f" | {' '.join(parts)}" if parts else ""
 
 
+def _format_slow_frame_action_suffix(robot: Robot | None) -> str:
+    if robot is None:
+        return ""
+
+    timing = getattr(robot, "_last_action_timing", None)
+    if not isinstance(timing, dict):
+        return ""
+
+    items = [
+        (key[:-3], float(value))
+        for key, value in timing.items()
+        if key.endswith("_ms") and isinstance(value, (int, float))
+    ]
+    if not items:
+        return ""
+
+    items.sort(key=lambda item: item[1], reverse=True)
+    visible_items = [item for item in items if item[1] >= 0.1]
+    if not visible_items:
+        visible_items = items
+
+    parts = ", ".join(f"{name}={value:.1f}ms" for name, value in visible_items[:6])
+    return f" | action_parts={parts}"
+
+
+def _format_slow_frame_cart_arm_suffix(robot: Robot | None) -> str:
+    if robot is None:
+        return ""
+
+    debug = getattr(robot, "_last_cartesian_command_debug", None)
+    if not isinstance(debug, dict):
+        return ""
+
+    parts = []
+    for side in ("left", "right"):
+        timing = debug.get(f"{side}_timing")
+        if not isinstance(timing, dict):
+            continue
+        items = [
+            (key[:-3], float(value))
+            for key, value in timing.items()
+            if key.endswith("_ms") and isinstance(value, (int, float))
+        ]
+        if not items:
+            continue
+        items.sort(key=lambda item: item[1], reverse=True)
+        visible_items = [item for item in items if item[1] >= 0.1]
+        if not visible_items:
+            visible_items = items
+        side_parts = ",".join(
+            f"{name}={value:.1f}ms" for name, value in visible_items[:5]
+        )
+        parts.append(f"{side}[{side_parts}]")
+
+    return f" | cart_arm_parts={' '.join(parts)}" if parts else ""
+
+
+def _format_slow_frame_loop_suffix(robot: Robot | None) -> str:
+    if robot is None:
+        return ""
+
+    timing = getattr(robot, "_last_record_loop_timing", None)
+    if not isinstance(timing, dict):
+        return ""
+
+    items = [
+        (key[:-3], float(value))
+        for key, value in timing.items()
+        if key.endswith("_ms") and isinstance(value, (int, float))
+    ]
+    if not items:
+        return ""
+
+    items.sort(key=lambda item: item[1], reverse=True)
+    visible_items = [item for item in items if item[1] >= 0.1]
+    if not visible_items:
+        visible_items = items
+
+    parts = ", ".join(f"{name}={value:.1f}ms" for name, value in visible_items[:8])
+    return f" | loop_parts={parts}"
+
+
 def _record_loop_sleep(
     start_loop_t: float,
     fps: int,
@@ -252,6 +334,9 @@ def _record_loop_sleep(
         f"[slow_frame] robot={robot_name} t={episode_t_s:.3f}s "
         f"loop={dt_s * 1e3:.1f}ms budget={budget_s * 1e3:.1f}ms "
         f"overrun={(-remaining_s) * 1e3:.1f}ms"
+        f"{_format_slow_frame_loop_suffix(robot)}"
+        f"{_format_slow_frame_action_suffix(robot)}"
+        f"{_format_slow_frame_cart_arm_suffix(robot)}"
         f"{_format_slow_frame_obs_suffix(robot)}"
     )
 
@@ -1057,8 +1142,11 @@ def flexiv_rizon4_rt_record_loop(
 
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
+        loop_timing: dict[str, float] = {}
         reset_triggered = False
+        section_t = time.perf_counter()
         refresh_listener_events(events)
+        loop_timing["events_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if events["stop_recording"]:
             logger.info("Stop recording requested, exiting record loop early")
@@ -1311,8 +1399,11 @@ def bi_dobot_nova5_dh_record_loop(
 
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
+        loop_timing: dict[str, float] = {}
         reset_triggered = False
+        section_t = time.perf_counter()
         refresh_listener_events(events)
+        loop_timing["events_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if events["stop_recording"]:
             logger.info("Stop recording requested, exiting record loop early")
@@ -1338,13 +1429,20 @@ def bi_dobot_nova5_dh_record_loop(
 
                 _start_reset_in_background(robot, teleop, set_done=_clear_reset)
 
+        section_t = time.perf_counter()
         obs = robot.get_observation()
+        loop_timing["get_obs_ms"] = (time.perf_counter() - section_t) * 1e3
+
+        section_t = time.perf_counter()
         obs_processed = robot_observation_processor(obs)
+        loop_timing["obs_proc_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if dataset is not None:
+            section_t = time.perf_counter()
             observation_frame = build_dataset_frame(
                 dataset.features, obs_processed, prefix=OBS_STR
             )
+            loop_timing["build_obs_frame_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if not isinstance(teleop, Teleoperator):
             logger.info(
@@ -1360,19 +1458,32 @@ def bi_dobot_nova5_dh_record_loop(
             timestamp = time.perf_counter() - start_episode_t
             continue
 
+        section_t = time.perf_counter()
         teleop_action = teleop.get_action()
+        loop_timing["teleop_ms"] = (time.perf_counter() - section_t) * 1e3
         if is_resetting or reset_triggered:
+            section_t = time.perf_counter()
             sent_action = {
                 k: obs[k]
                 for k in robot.action_features
                 if k in obs
             }
+            loop_timing["reset_action_ms"] = (time.perf_counter() - section_t) * 1e3
         else:
+            section_t = time.perf_counter()
             action_values = teleop_action_processor((teleop_action, obs))
+            loop_timing["teleop_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+
+            section_t = time.perf_counter()
             robot_action_to_send = robot_action_processor((action_values, obs))
+            loop_timing["robot_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+
+            section_t = time.perf_counter()
             sent_action = robot.send_action(robot_action_to_send)
+            loop_timing["send_action_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if dataset is not None:
+            section_t = time.perf_counter()
             if (is_resetting or reset_triggered) and prev_observation_frame is not None:
                 action_frame = build_dataset_frame(
                     dataset.features, sent_action, prefix=ACTION
@@ -1387,9 +1498,15 @@ def bi_dobot_nova5_dh_record_loop(
                 dataset.add_frame(frame)
 
             prev_observation_frame = observation_frame
+            loop_timing["dataset_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if display_data:
+            section_t = time.perf_counter()
             log_rerun_data(observation=obs_processed, action=sent_action)
+            loop_timing["display_ms"] = (time.perf_counter() - section_t) * 1e3
+
+        loop_timing["pre_sleep_total_ms"] = (time.perf_counter() - start_loop_t) * 1e3
+        setattr(robot, "_last_record_loop_timing", loop_timing)
 
         _record_loop_sleep(
             start_loop_t=start_loop_t,
@@ -1908,6 +2025,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
     listener, events = init_keyboard_listener(teleop=teleop)
 
+    interrupted_by_user = False
+
     try:
         with VideoEncodingManager(dataset):
             recorded_episodes = 0
@@ -2167,6 +2286,7 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
         log_say("Stop recording", cfg.play_sounds, blocking=True)
     except KeyboardInterrupt:
+        interrupted_by_user = True
         logger.info("\nKeyboardInterrupt received. Stopping recording...")
     except Exception as e:
         import traceback
@@ -2203,7 +2323,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             logger.error(f"Error stopping listener: {e}")
 
         try:
-            if cfg.dataset.push_to_hub:
+            if interrupted_by_user:
+                logger.info("Skipping push_to_hub because recording was interrupted by user.")
+            elif cfg.dataset.push_to_hub:
                 dataset.push_to_hub(
                     tags=cfg.dataset.tags,
                     private=cfg.dataset.private,

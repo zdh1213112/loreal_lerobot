@@ -31,16 +31,16 @@ lerobot-teleoperate \
 lerobot-record \
     --robot.type=bi_dobot_nova5_dh \
     --teleop.type=bi_pico4 \
-    --dataset.repo_id=Xense/bi_dobot_nova5_dh_pico4_test_0709 \
-    --dataset.num_episodes=2 \
-    --dataset.single_task="teleoperate the bi-dobot nova5 dh grippers with pico4" \
+    --dataset.repo_id=Xense/loreal_returns_sorting_0709 \
+    --dataset.num_episodes=3 \
+    --dataset.single_task="Pick up the returned cosmetic product, scan its barcode, and place it into the return cart." \
     --dataset.fps=30 \
-    --dataset.episode_time_s=250 \
-    --dataset.reset_time_s=50 \
+    --dataset.episode_time_s=500 \
+    --dataset.reset_time_s=100 \
     --dataset.streaming_encoding=true \
     --dataset.vcodec=auto \
-    --resume=false \
-    --dataset.push_to_hub=false \
+    --resume=true \
+    --dataset.push_to_hub=true \
     --display_data=false
 ```
 

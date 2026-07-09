@@ -101,6 +101,11 @@ class BiDobotNova5DHConfig(RobotConfig):
     cartesian_ik_servoj_hold_s: float = 0.0
     max_cartesian_step_m: float = 0.05
 
+    # Keep record/teleop loops at camera FPS by enqueueing the newest action and
+    # letting a background worker perform the blocking Dobot ServoP call.
+    async_action_worker: bool = True
+    async_action_worker_frequency: float = 30.0
+
     # Tool coordinate for Cartesian teleoperation. Tool 0 is the flange.
     use_tool_coordinate: bool = True
     left_tool_coordinate_index: int = 1

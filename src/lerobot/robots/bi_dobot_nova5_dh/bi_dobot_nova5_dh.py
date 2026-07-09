@@ -175,6 +175,18 @@ class BiDobotNova5DH(Robot):
         self._last_cartesian_guard_log_s = {"left": 0.0, "right": 0.0}
         self._last_cartesian_command_debug: dict[str, dict[str, Any]] = {}
         self._last_servo_period_s = 1.0 / float(config.control_frequency)
+        self._action_worker_thread: threading.Thread | None = None
+        self._action_worker_running = False
+        self._action_worker_paused = False
+        self._action_worker_busy = False
+        self._action_worker_lock = threading.Lock()
+        self._action_worker_cv = threading.Condition(self._action_worker_lock)
+        self._pending_async_action: dict[str, Any] | None = None
+        self._latest_sent_async_action: dict[str, Any] | None = None
+        self._last_async_action_timing: dict[str, float] = {}
+        self._async_action_drop_count = 0
+        self._async_action_send_count = 0
+        self._async_action_error_count = 0
 
         self._left_gripper: DHGripperIntegrated | None = None
         if config.use_left_gripper:
@@ -1058,6 +1070,7 @@ class BiDobotNova5DH(Robot):
                 self._go_to_start()
 
             self.configure()
+            self._start_action_worker()
             self.logger.info("✅ BiDobot Nova5 connected and ready.")
         except Exception:
             self._is_connected = False
@@ -1152,12 +1165,13 @@ class BiDobotNova5DH(Robot):
     def reset_to_initial_position(self) -> None:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
-        if self.config.reset_target == ResetTarget.START:
-            self._go_to_start()
-        elif self.config.reset_target == ResetTarget.HOME:
-            self._go_to_home()
-        else:
-            raise ValueError(f"Unsupported reset_target: {self.config.reset_target}")
+        with self._pause_action_worker():
+            if self.config.reset_target == ResetTarget.START:
+                self._go_to_start()
+            elif self.config.reset_target == ResetTarget.HOME:
+                self._go_to_home()
+            else:
+                raise ValueError(f"Unsupported reset_target: {self.config.reset_target}")
 
     def _read_tcp_pose_quat(self, feed: _FeedState) -> np.ndarray:
         tcp_pose = np.asarray(feed.tcpPose, dtype=np.float64)
@@ -1196,16 +1210,23 @@ class BiDobotNova5DH(Robot):
     def get_observation(self) -> dict[str, Any]:
         if not self.is_connected:
             raise DeviceNotConnectedError(f"{self} is not connected.")
+        obs_start_s = time.perf_counter()
+        obs_timing: dict[str, float] = {}
         obs_dict: dict[str, Any] = {}
 
         if self.config.control_mode == ControlMode.JOINT_MOTION:
+            section_s = time.perf_counter()
             for i, key in enumerate(self._left_joint_pos_keys):
                 obs_dict[key] = self._left_feed_data.qActual[i]
+            obs_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+
+            section_s = time.perf_counter()
             for i, key in enumerate(self._right_joint_pos_keys):
                 obs_dict[key] = self._right_feed_data.qActual[i]
+            obs_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
         elif self.config.control_mode == ControlMode.CARTESIAN_MOTION:
+            section_s = time.perf_counter()
             left_pose = self._left_feed_data.tcpPose
-            right_pose = self._right_feed_data.tcpPose
 
             obs_dict["left_tcp.x"] = left_pose[0] / MM_PER_METER
             obs_dict["left_tcp.y"] = left_pose[1] / MM_PER_METER
@@ -1224,6 +1245,10 @@ class BiDobotNova5DH(Robot):
             obs_dict["left_tcp.r4"] = left_r6d[3]
             obs_dict["left_tcp.r5"] = left_r6d[4]
             obs_dict["left_tcp.r6"] = left_r6d[5]
+            obs_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+
+            section_s = time.perf_counter()
+            right_pose = self._right_feed_data.tcpPose
 
             obs_dict["right_tcp.x"] = right_pose[0] / MM_PER_METER
             obs_dict["right_tcp.y"] = right_pose[1] / MM_PER_METER
@@ -1242,14 +1267,26 @@ class BiDobotNova5DH(Robot):
             obs_dict["right_tcp.r4"] = right_r6d[3]
             obs_dict["right_tcp.r5"] = right_r6d[4]
             obs_dict["right_tcp.r6"] = right_r6d[5]
+            obs_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
         else:
             raise ValueError(f"Unsupported control_mode: {self.config.control_mode}")
 
+        section_s = time.perf_counter()
         obs_dict[self._left_gripper_key] = self._read_gripper_pos("left")
-        obs_dict[self._right_gripper_key] = self._read_gripper_pos("right")
+        obs_timing["left_grip_ms"] = (time.perf_counter() - section_s) * 1e3
 
+        section_s = time.perf_counter()
+        obs_dict[self._right_gripper_key] = self._read_gripper_pos("right")
+        obs_timing["right_grip_ms"] = (time.perf_counter() - section_s) * 1e3
+
+        cameras_start_s = time.perf_counter()
         for cam_key, cam in self.cameras.items():
+            section_s = time.perf_counter()
             obs_dict[cam_key] = cam.async_read()
+            obs_timing[f"cam[{cam_key}]_ms"] = (time.perf_counter() - section_s) * 1e3
+        obs_timing["cameras_ms"] = (time.perf_counter() - cameras_start_s) * 1e3
+        obs_timing["total_ms"] = (time.perf_counter() - obs_start_s) * 1e3
+        self._last_obs_timing = obs_timing
 
         return obs_dict
 
@@ -1419,10 +1456,15 @@ class BiDobotNova5DH(Robot):
         prefix: str,
         side: str,
     ) -> None:
+        arm_start_s = time.perf_counter()
+        arm_timing: dict[str, float] = {}
+        self._last_cartesian_command_debug[f"{side}_timing"] = arm_timing
         enabled_key = f"{prefix}_arm.enabled"
         if enabled_key in action and not bool(action[enabled_key]):
+            arm_timing["disabled_ms"] = (time.perf_counter() - arm_start_s) * 1e3
             return
 
+        section_s = time.perf_counter()
         requested_pos_m = np.array(
             [
                 float(action[f"{prefix}_tcp.x"]),
@@ -1432,8 +1474,14 @@ class BiDobotNova5DH(Robot):
             dtype=np.float64,
         )
         clipped_pos_m = self._clip_workspace_position(side, requested_pos_m)
+        arm_timing["prep_pos_ms"] = (time.perf_counter() - section_s) * 1e3
         x_m, y_m, z_m = clipped_pos_m
+
+        section_s = time.perf_counter()
         current_pose_mm_deg, current_joint_deg = self._cartesian_feed_state(side)
+        arm_timing["feed_state_ms"] = (time.perf_counter() - section_s) * 1e3
+
+        section_s = time.perf_counter()
         target_pos_mm = np.array(
             [x_m * MM_PER_METER, y_m * MM_PER_METER, z_m * MM_PER_METER],
             dtype=np.float64,
@@ -1473,6 +1521,7 @@ class BiDobotNova5DH(Robot):
             ],
             dtype=np.float64,
         )
+        arm_timing["prep_pose_ms"] = (time.perf_counter() - section_s) * 1e3
         self._last_cartesian_command_debug[side] = {
             "requested_pos_m": requested_pos_m.copy(),
             "clipped_pos_m": clipped_pos_m.copy(),
@@ -1491,15 +1540,21 @@ class BiDobotNova5DH(Robot):
             and self.config.cartesian_ik_servoj
             and time.perf_counter() < self._cartesian_ik_servoj_until_s[side]
         ):
+            section_s = time.perf_counter()
             target_pose_mm_deg, target_joint_deg = self._resolve_cartesian_servo_target(
                 robot, target_pose_mm_deg, side
             )
+            arm_timing["ik_guard_ms"] = (time.perf_counter() - section_s) * 1e3
             if target_joint_deg is not None:
+                section_s = time.perf_counter()
                 self._send_cartesian_servoj(
                     robot, target_joint_deg, side, f"{side} ServoJ IK guard"
                 )
+                arm_timing["servoj_ms"] = (time.perf_counter() - section_s) * 1e3
+                arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
                 return
 
+        section_s = time.perf_counter()
         response = robot.ServoP(
             float(target_pose_mm_deg[0]),
             float(target_pose_mm_deg[1]),
@@ -1508,8 +1563,13 @@ class BiDobotNova5DH(Robot):
             float(target_pose_mm_deg[4]),
             float(target_pose_mm_deg[5]),
         )
+        arm_timing["servop_ms"] = (time.perf_counter() - section_s) * 1e3
+
+        section_s = time.perf_counter()
         response_error_id, _ = self._parse_dobot_response(response)
+        arm_timing["parse_response_ms"] = (time.perf_counter() - section_s) * 1e3
         if response_error_id == 0:
+            arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
             return
 
         if not (
@@ -1521,6 +1581,7 @@ class BiDobotNova5DH(Robot):
                 self._log_cartesian_command_failure(side, robot, response, f"{side} ServoP")
             except Exception as e:
                 self.logger.warn(f"Failed to build {side} ServoP diagnostics: {e}")
+            arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
             self._raise_if_dobot_error(robot, response, f"{side} ServoP")
             return
 
@@ -1528,19 +1589,25 @@ class BiDobotNova5DH(Robot):
         self._cartesian_ik_servoj_until_s[side] = (
             time.perf_counter() + float(self.config.cartesian_ik_servoj_hold_s)
         )
+        section_s = time.perf_counter()
         target_pose_mm_deg, target_joint_deg = self._resolve_cartesian_servo_target(
             robot, target_pose_mm_deg, side
         )
+        arm_timing["fallback_ik_ms"] = (time.perf_counter() - section_s) * 1e3
         if target_joint_deg is None:
+            arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
             return
 
         try:
+            section_s = time.perf_counter()
             self._send_cartesian_servoj(
                 robot,
                 target_joint_deg,
                 side,
                 f"{side} ServoJ after ServoP IK fallback",
             )
+            arm_timing["fallback_servoj_ms"] = (time.perf_counter() - section_s) * 1e3
+            arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
         except Exception as e:
             try:
                 self._log_cartesian_command_failure(
@@ -1551,6 +1618,7 @@ class BiDobotNova5DH(Robot):
                     f"Failed to build {side} ServoJ fallback diagnostics: {diagnostics_error}"
                 )
             self.logger.warn(f"{side} ServoJ fallback failed, skipping frame: {e}")
+            arm_timing["total_ms"] = (time.perf_counter() - arm_start_s) * 1e3
 
     def _send_gripper_action(self, action: dict[str, Any]) -> None:
         if (
@@ -1584,56 +1652,198 @@ class BiDobotNova5DH(Robot):
                     f"Right DH gripper command failed, disabling right gripper commands for this session: {e}"
                 )
 
-    def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+    def _action_worker_loop(self) -> None:
+        min_period_s = 1.0 / max(float(self.config.async_action_worker_frequency), 1e-6)
+        next_send_s = time.perf_counter()
+        while True:
+            with self._action_worker_cv:
+                while (
+                    self._action_worker_running
+                    and (self._action_worker_paused or self._pending_async_action is None)
+                ):
+                    self._action_worker_cv.wait(timeout=0.1)
+                if not self._action_worker_running:
+                    break
+                action = self._pending_async_action
+                self._pending_async_action = None
+
+            now_s = time.perf_counter()
+            if now_s < next_send_s:
+                time.sleep(next_send_s - now_s)
+            send_start_s = time.perf_counter()
+            try:
+                with self._action_worker_cv:
+                    self._action_worker_busy = True
+                sent_action = self._send_action_sync(action)
+                elapsed_ms = (time.perf_counter() - send_start_s) * 1e3
+                with self._action_worker_lock:
+                    self._latest_sent_async_action = sent_action
+                    self._async_action_send_count += 1
+                    self._last_async_action_timing = {
+                        "worker_send_ms": elapsed_ms,
+                        "queue_drop_count": float(self._async_action_drop_count),
+                        "send_count": float(self._async_action_send_count),
+                        "error_count": float(self._async_action_error_count),
+                    }
+            except Exception as e:
+                with self._action_worker_lock:
+                    self._async_action_error_count += 1
+                    self._last_async_action_timing = {
+                        "worker_error_count": float(self._async_action_error_count),
+                        "queue_drop_count": float(self._async_action_drop_count),
+                }
+                self.logger.warn(f"Async action worker skipped failed action: {e}")
+            finally:
+                with self._action_worker_cv:
+                    self._action_worker_busy = False
+                    self._action_worker_cv.notify_all()
+            next_send_s = max(next_send_s + min_period_s, time.perf_counter())
+
+    def _start_action_worker(self) -> None:
+        if not self.config.async_action_worker or self._action_worker_thread is not None:
+            return
+        self._action_worker_running = True
+        self._action_worker_paused = False
+        self._action_worker_thread = threading.Thread(
+            target=self._action_worker_loop,
+            name="BiDobotNova5DHActionWorker",
+            daemon=True,
+        )
+        self._action_worker_thread.start()
+        self.logger.info(
+            f"Async action worker started at {self.config.async_action_worker_frequency:.1f} Hz; "
+            "record loop will not block on ServoP."
+        )
+
+    def _stop_action_worker(self) -> None:
+        with self._action_worker_cv:
+            self._action_worker_running = False
+            self._pending_async_action = None
+            self._action_worker_cv.notify_all()
+        if self._action_worker_thread is not None:
+            self._action_worker_thread.join(timeout=2.0)
+            self._action_worker_thread = None
+
+    @contextlib.contextmanager
+    def _pause_action_worker(self):
+        if not self.config.async_action_worker:
+            yield
+            return
+        with self._action_worker_cv:
+            previous_paused = self._action_worker_paused
+            self._action_worker_paused = True
+            self._pending_async_action = None
+            self._action_worker_cv.notify_all()
+            while self._action_worker_busy:
+                self._action_worker_cv.wait(timeout=0.05)
+        try:
+            yield
+        finally:
+            with self._action_worker_cv:
+                self._action_worker_paused = previous_paused
+                self._action_worker_cv.notify_all()
+
+    def _submit_async_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        submit_start_s = time.perf_counter()
+        action_copy = dict(action)
+        with self._action_worker_cv:
+            if self._pending_async_action is not None:
+                self._async_action_drop_count += 1
+            self._pending_async_action = action_copy
+            last_sent = self._latest_sent_async_action
+            worker_timing = dict(self._last_async_action_timing)
+            self._action_worker_cv.notify()
+        submit_ms = (time.perf_counter() - submit_start_s) * 1e3
+        self._last_action_timing = {
+            "async_submit_ms": submit_ms,
+            "total_ms": submit_ms,
+            **worker_timing,
+        }
+        return last_sent if last_sent is not None else action
+
+    def _send_action_sync(self, action: dict[str, Any]) -> dict[str, Any]:
         if (
             not self.is_connected
             or self._left_robot is None
             or self._right_robot is None
         ):
             raise DeviceNotConnectedError(f"{self} is not connected.")
+        action_start_s = time.perf_counter()
+        action_timing: dict[str, float] = {}
 
         if int(self._left_feed_data.RobotMode) == 9:
+            section_s = time.perf_counter()
             try:
                 self._log_cartesian_command_failure(
                     "left", self._left_robot, None, "left RobotMode=9"
                 )
             except Exception as e:
                 self.logger.warn(f"Failed to build left fault diagnostics: {e}")
+            action_timing["left_fault_diagnostics_ms"] = (time.perf_counter() - section_s) * 1e3
             self.logger.warn(
                 f"Left robot fault detected, trying ClearError and skipping this frame. "
                 f"GetErrorID: {self._dobot_error_detail(self._left_robot)}"
             )
+            section_s = time.perf_counter()
             self.clear_fault()
+            action_timing["clear_fault_ms"] = (time.perf_counter() - section_s) * 1e3
+            action_timing["total_ms"] = (time.perf_counter() - action_start_s) * 1e3
+            self._last_action_timing = action_timing
             return action
         if int(self._right_feed_data.RobotMode) == 9:
+            section_s = time.perf_counter()
             try:
                 self._log_cartesian_command_failure(
                     "right", self._right_robot, None, "right RobotMode=9"
                 )
             except Exception as e:
                 self.logger.warn(f"Failed to build right fault diagnostics: {e}")
+            action_timing["right_fault_diagnostics_ms"] = (time.perf_counter() - section_s) * 1e3
             self.logger.warn(
                 f"Right robot fault detected, trying ClearError and skipping this frame. "
                 f"GetErrorID: {self._dobot_error_detail(self._right_robot)}"
             )
+            section_s = time.perf_counter()
             self.clear_fault()
+            action_timing["clear_fault_ms"] = (time.perf_counter() - section_s) * 1e3
+            action_timing["total_ms"] = (time.perf_counter() - action_start_s) * 1e3
+            self._last_action_timing = action_timing
             return action
 
         if self.config.control_mode == ControlMode.JOINT_MOTION:
+            section_s = time.perf_counter()
             self._send_joint_action_one_arm(
                 self._left_robot, action, self._left_action_joint_keys, "left"
             )
+            action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+
+            section_s = time.perf_counter()
             self._send_joint_action_one_arm(
                 self._right_robot, action, self._right_action_joint_keys, "right"
             )
+            action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
         elif self.config.control_mode == ControlMode.CARTESIAN_MOTION:
+            section_s = time.perf_counter()
             self._send_cart_action_one_arm(self._left_robot, action, "left", "left")
+            action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+
+            section_s = time.perf_counter()
             self._send_cart_action_one_arm(self._right_robot, action, "right", "right")
+            action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
         else:
             raise ValueError(f"Unsupported control_mode: {self.config.control_mode}")
 
+        section_s = time.perf_counter()
         self._send_gripper_action(action)
+        action_timing["grippers_ms"] = (time.perf_counter() - section_s) * 1e3
+        action_timing["total_ms"] = (time.perf_counter() - action_start_s) * 1e3
+        self._last_action_timing = action_timing
         return action
+
+    def send_action(self, action: dict[str, Any]) -> dict[str, Any]:
+        if self.config.async_action_worker:
+            return self._submit_async_action(action)
+        return self._send_action_sync(action)
 
     def clear_fault(self) -> bool:
         if self._left_robot is None or self._right_robot is None:
@@ -1665,6 +1875,7 @@ class BiDobotNova5DH(Robot):
             return
         try:
             self.logger.info("Disconnecting BiDobot Nova5...")
+            self._stop_action_worker()
             try:
                 self._go_to_home()
             except Exception as e:
