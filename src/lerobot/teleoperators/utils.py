@@ -1,0 +1,93 @@
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from enum import Enum
+from typing import cast
+
+from lerobot.utils.import_utils import make_device_from_device_class
+
+from .config import TeleoperatorConfig
+from .teleoperator import Teleoperator
+
+
+class TeleopEvents(Enum):
+    """Shared constants for teleoperator events across teleoperators."""
+
+    SUCCESS = "success"
+    FAILURE = "failure"
+    RERECORD_EPISODE = "rerecord_episode"
+    IS_INTERVENTION = "is_intervention"
+    TERMINATE_EPISODE = "terminate_episode"
+    BACK_HOME = "back_home"
+
+
+def make_teleoperator_from_config(config: TeleoperatorConfig) -> Teleoperator:
+    # TODO(Steven): Consider just using the make_device_from_device_class for all types
+    if config.type == "keyboard":
+        from .keyboard import KeyboardTeleop
+
+        return KeyboardTeleop(config)
+    elif config.type == "mock_teleop":
+        from .mock_teleop import MockTeleop
+
+        return MockTeleop(config)
+    elif config.type == "gamepad":
+        from .gamepad.teleop_gamepad import GamepadTeleop
+
+        return GamepadTeleop(config)
+    elif config.type == "btgamepad":
+        from .btgamepad.teleop_btgamepad import BtgamepadTeleop
+
+        return BtgamepadTeleop(config)
+    elif config.type == "keyboard_ee":
+        from .keyboard.teleop_keyboard import KeyboardEndEffectorTeleop
+
+        return KeyboardEndEffectorTeleop(config)
+    elif config.type == "pico4":
+        from .pico4 import Pico4
+
+        return Pico4(config)
+    elif config.type == "pico4_hand":
+        from .pico4_hand import Pico4Hand
+
+        return Pico4Hand(config)
+    elif config.type == "bi_pico4":
+        from .bi_pico4 import BiPico4
+
+        return BiPico4(config)
+    elif config.type == "spacemouse":
+        from .spacemouse import SpacemouseTeleop
+
+        return SpacemouseTeleop(config)
+    elif config.type == "vive_tracker":
+        from .vive_tracker import ViveTrackerTeleop
+
+        return ViveTrackerTeleop(config)
+    elif config.type == "xense_flare":
+        from .xense_flare import XenseFlareTeleop
+
+        return XenseFlareTeleop(config)
+    elif config.type == "trlc_leader":
+        from .trlc_leader.trlc_leader import TRLCLeader
+
+        return TRLCLeader(config)
+    elif config.type == "bi_trlc":
+        from .bi_trlc.bi_trlc import BiTRLC
+
+        return BiTRLC(config)
+    else:
+        try:
+            return cast(Teleoperator, make_device_from_device_class(config))
+        except Exception as e:
+            raise ValueError(f"Error creating robot with config {config}: {e}") from e

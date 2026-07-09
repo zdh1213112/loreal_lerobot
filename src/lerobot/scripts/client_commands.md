@@ -1,0 +1,566 @@
+# Lerobot-integration with BiARX5
+
+## Prerequisites
+
+### Hugging Face CLI login
+
+Required before running any command with `--dataset.push_to_hub=true`:
+
+```bash
+huggingface-cli login
+```
+
+Paste your HuggingFace access token (with write permission) when prompted.
+The token is stored at `~/.cache/huggingface/token` and persists across sessions.
+
+## BiDobot Nova5 DH + Bi-Pico4 lerobot-teleoperate command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=bi_dobot_nova5_dh \
+    --teleop.type=bi_pico4 \
+    --fps=30 \
+    --display_data=false \
+    --debug_timing=false \
+    --dryrun=false
+```
+
+## BiDobot Nova5 DH + Bi-Pico4 lerobot-record command
+
+```bash
+lerobot-record \
+    --robot.type=bi_dobot_nova5_dh \
+    --teleop.type=bi_pico4 \
+    --dataset.repo_id=Xense/bi_dobot_nova5_dh_pico4_test_0709 \
+    --dataset.num_episodes=2 \
+    --dataset.single_task="teleoperate the bi-dobot nova5 dh grippers with pico4" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=250 \
+    --dataset.reset_time_s=50 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=false
+```
+
+
+## BiARX5 Robot lerobot-teleoperate command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --fps=30 \
+    --debug_timing=false \
+    --display_data=true
+```
+
+```bash
+lerobot-teleoperate \
+    --robot.type=arx5_follower \
+    --robot.control_mode=cartesian_control \
+    --robot.enable_tactile_sensors=false \
+    --teleop.type=mock_teleop \
+    --fps=30 \
+    --debug_timing=false \
+    --display_data=true
+```
+
+## ARX5 Robot lerobot-teleoperate command(use trlc_leader teleop)
+
+```bash
+lerobot-teleoperate \
+    --robot.type=arx5_follower \
+    --robot.control_mode=joint_control \
+    --robot.enable_tactile_sensors=false \
+    --teleop.type=trlc_leader \
+    --teleop.port="/dev/ttyTRLC0" \
+    --teleop.joint_signs "[1,1,1,1,1,1]" \
+    --teleop.start_joints "[0.0,0.0,0.0,0.0,0.0,0.0]" \
+    --fps=30 \
+    --debug_timing=false \
+    --display_data=true
+```
+
+```bash
+lerobot-teleoperate \
+    --robot.type=mock_robot \
+    --robot.control_mode=joint_control \
+    --robot.n_motors=6 \
+    --robot.use_gripper=true \
+    --teleop.type=trlc_leader \
+    --teleop.port="/dev/ttyTRLC0" \
+    --teleop.joint_signs "[1,1,1,1,1,1]" \
+    --teleop.start_joints "[0.0,0.0,0.0,0.0,0.0,0.0]" \
+    --fps=30 \
+    --debug_timing=false \
+    --display_data=true
+```
+
+## Flexiv Rizon4 Robot with Flare Gripper teleoperate by Pico4 command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=flexiv_rizon4 \
+    --robot.gripper_mac_addr="e2b26adbb104" \
+    --robot.gripper_type="flare_gripper" \
+    --robot.control_mode=cartesian_motion_force_control \
+    --teleop.type=pico4 \
+    --fps=30 \
+    --display_data=true \
+    --dryrun=true
+```
+
+## Bi Xense Flare Grippers Robot teleoperate by Mock Teleop command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=bi_xense_flare_grippers \
+    --teleop.type=mock_teleop \
+    --fps=30 \
+    --display_data=true
+```
+
+## Bi Xense Flare Grippers Robot lerobot-record command
+
+```bash
+lerobot-record \
+    --robot.type=bi_xense_flare_grippers \
+    --dataset.repo_id=Vertax/bi_xense_flare_grippers_test \
+    --dataset.num_episodes=50 \
+    --dataset.single_task="bi_xense_flare_grippers_test_data" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=120 \
+    --dataset.reset_time_s=20 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=true
+```
+
+## Bimanual Flexiv Rizon4 RT + Bi-Pico4 teleoperate command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=bi_flexiv_rizon4_rt \
+    --robot.bi_mount_type=forward \
+    --teleop.type=bi_pico4 \
+    --fps=30 \
+    --display_data=true
+```
+
+## Flexiv Rizon4 Robot with Flare Gripper lerobot-record by Beitong Gamepad command
+
+```python
+lerobot-record \
+    --robot.type=flexiv_rizon4 \
+    --robot.gripper_mac_addr="e2b26adbb104" \
+    --robot.gripper_type="flare_gripper" \
+    --robot.control_mode=cartesian_motion_force_control \
+    --teleop.type=btgamepad \
+    --dataset.repo_id=flexiv_pico4/ceshi20260204 \
+    --dataset.num_episodes=2 \
+    --dataset.single_task="pick up cubes in rgb order from the table and place them in the blue box" \
+    --dataset.fps=10 \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=true
+```
+
+## xense_flare Robot teleoperate by Mock Teleop command
+
+### 1e892b82baa5 -another mac addr
+
+```python
+lerobot-teleoperate \
+    --robot.type=xense_flare \
+    --robot.mac_addr="6ebbc5f53240" \
+    --teleop.type=mock_teleop \
+    --fps=20 \
+    --display_data=true \
+    --debug_timing=true \
+    --dryrun=false
+```
+
+## BiARX5 Robot lerobot-record command
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Xense/xense_bi_arx5_test \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=true \
+    --resume=false \
+    --dataset.push_to_hub=false
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Xense/xense_bi_arx5_tie_shoelaces \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=false \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/xense_bi_arx5_tie_shoelaces_tactile \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=false \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/xense_bi_arx5_tie_shoelaces_high_quality \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=true \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/xense_bi_arx5_tie_shoelaces_1027 \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=true \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/xense_bi_arx5_tie_white_shoelaces_1028 \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=true \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/xense_bi_arx5_tie_white_shoelaces_1030_no_adjust \
+    --dataset.num_episodes=100 \
+    --dataset.single_task="tie shoelaces" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=true \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/lerobot040_test_bi_arx5 \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="test" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=300 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=false \
+    --dataset.push_to_hub=true
+```
+
+---
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/lerobot040_pick_and_place_chip_bi_arx5_1204 \
+    --dataset.num_episodes=10 \
+    --dataset.single_task="pick up a potato chip and place it into the chips container" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=60 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --display_data=false \
+    --resume=false \
+    --dataset.push_to_hub=true
+```
+
+```python
+lerobot-record \
+    --robot.type=bi_arx5 \
+    --robot.enable_tactile_sensors=true \
+    --teleop.type=mock_teleop \
+    --dataset.repo_id=Vertax/bi_arx5_video_encode_test \
+    --dataset.single_task="test video encoding" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=30 \
+    --dataset.reset_time_s=10 \
+    --dataset.num_episodes=5 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto
+```
+
+## BiARX5 Robot lerobot-annotate-reward command
+
+```python
+lerobot-annotate-reward \
+    --repo-id Xense/xense_bi_arx5_tie_shoelaces \
+    --new-repo-id Vertax/test_annotated \
+    --push-to-hub
+```
+
+**Note on preview_time:**
+
+Adjust `--robot.preview_time` to reduce jittering:
+
+- 0.03-0.05s: Smoother motion, more delay (recommended for stable movements)
+- 0.01-0.02s: More responsive, but may cause jittering
+- 0.0: No preview (only for teleoperation/recording)
+
+
+## Franka robot lerobot-teleoperate command
+
+```python
+lerobot-teleoperate \
+  --robot.type=pylibfranka_research3 \
+  --robot.control_mode=cartesian_impedance \
+  --teleop.type=pico4 \
+  --fps=30 \
+  --debug_timing=false \
+  --display_data=true
+  --dryrun=true
+```
+
+### Example (Franka research3 + Pico4):
+
+```shell
+lerobot-teleoperate \
+    --robot.type=pylibfranka_research3 \
+    --teleop.type=pico4 \
+    --fps=30 \
+    --display_data=true
+```
+
+### Example (Franka research3 + SpaceMouse):
+
+```shell
+lerobot-teleoperate \
+    --robot.type=pylibfranka_research3 \
+    --teleop.type=spacemouse \
+    --fps=30 \
+    --display_data=true
+```
+
+### Example (Franka research3 + BtGamepad):
+
+```shell
+lerobot-teleoperate \
+    --robot.type=pylibfranka_research3 \
+    --teleop.type=btgamepad \
+    --fps=30 \
+    --display_data=true
+```
+
+## Franka robot lerobot-record command
+
+```python
+lerobot-record \
+  --robot.type=pylibfranka_research3 \
+  --robot.control_mode=cartesian_impedance \
+  --teleop.type=btgamepad \
+  --dataset.repo_id=franka_btgamepad/ceshi20260209 \
+  --dataset.num_episodes=2 \
+  --dataset.single_task="pick" \
+  --dataset.fps=30 \
+  --resume=false \
+  --dataset.push_to_hub=false \
+  --display_data=true
+```
+
+```python
+lerobot-record \
+    --robot.type=pylibfranka_research3 \
+    --robot.control_mode=cartesian_impedance \
+    --teleop.type=pico4 \
+    --dataset.repo_id=flexiv_pico4/ceshi20260225 \
+    --dataset.num_episodes=2 \
+    --dataset.single_task="pick" \
+    --dataset.fps=10 \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=true
+```
+
+## Bimanual Flexiv Rizon4 RT + Bi-Pico4 lerobot-record command
+
+### forward mount (side-by-side)
+
+```bash
+lerobot-record \
+    --robot.type=bi_flexiv_rizon4_rt \
+    --robot.bi_mount_type=forward \
+    --robot.left_robot_sn=Rizon4s-063458 \
+    --robot.right_robot_sn=Rizon4s-063670 \
+    --teleop.type=bi_pico4 \
+    --dataset.repo_id=Xense/assemble_box_with_phone_stand0430_merged \
+    --dataset.num_episodes=5 \
+    --dataset.single_task="Assemble the packaging by folding the flat box into shape, placing the metal phone stand inside, and closing the box properly" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=600 \
+    --dataset.reset_time_s=120 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=true \
+    --dataset.push_to_hub=true \
+    --display_data=false
+```
+
+### side mount (facing each other)
+
+```bash
+lerobot-record \
+    --robot.type=bi_flexiv_rizon4_rt \
+    --robot.bi_mount_type=side \
+    --robot.left_robot_sn=Rizon4-063423 \
+    --robot.right_robot_sn=Rizon4-062855 \
+    --teleop.type=bi_pico4 \
+    --dataset.repo_id=Vertax/bi_flexiv_rt_pick_and_place \
+    --dataset.num_episodes=50 \
+    --dataset.single_task="pick up the cube and place it in the box" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=60 \
+    --dataset.reset_time_s=20 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=false
+```
+
+**Current controller mapping during recording:**
+
+| Button    | Action                                              |
+| --------- | --------------------------------------------------- |
+| Right `A` | Reset both arms to start pose (recording continues) |
+
+Other record-control shortcuts are currently keyboard-driven:
+
+| Input         | Action                                              |
+| ------------- | --------------------------------------------------- |
+| `Left Arrow`  | Discard current episode and re-record               |
+| `Right Arrow` | Finish current episode early                        |
+| `Esc`         | Stop the recording session                          |
+| `Space`       | Reset both arms to start pose (recording continues) |
+
+## BiDobot Nova5 DH + Bi-Pico4 lerobot-teleoperate command
+
+```bash
+lerobot-teleoperate \
+    --robot.type=bi_dobot_nova5_dh \
+    --teleop.type=bi_pico4 \
+    --fps=30 \
+    --display_data=false \
+    --debug_timing=false \
+    --dryrun=false
+```
+
+## BiDobot Nova5 DH + Bi-Pico4 lerobot-record command
+
+```bash
+lerobot-record \
+    --robot.type=bi_dobot_nova5_dh \
+    --teleop.type=bi_pico4 \
+    --dataset.repo_id=Xense/bi_dobot_nova5_dh_pico4_test \
+    --dataset.num_episodes=10 \
+    --dataset.single_task="teleoperate the bi-dobot nova5 dh grippers with pico4" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=60 \
+    --dataset.reset_time_s=20 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=false
+```
+
+If only the right DH gripper is mounted, set:
+
+```bash
+--robot.use_left_gripper=false --robot.use_right_gripper=true
+```
+
+## ARX5 Robot lerobot-record command (use trlc_leader teleop)
+
+```bash
+lerobot-record \
+    --robot.type=arx5_follower \
+    --robot.control_mode=joint_control \
+    --robot.arm_port=can3 \
+    --teleop.type=trlc_leader \
+    --teleop.port="/dev/ttyTRLC0" \
+    --teleop.joint_signs "[1,1,1,1,1,1]" \
+    --teleop.start_joints "[0.0,0.0,0.0,0.0,0.0,0.0]" \
+    --dataset.repo_id=Vertax/arx5_trlc_pick_and_place \
+    --dataset.num_episodes=50 \
+    --dataset.single_task="pick up the cube and place it in the box" \
+    --dataset.fps=30 \
+    --dataset.episode_time_s=60 \
+    --dataset.reset_time_s=15 \
+    --dataset.streaming_encoding=true \
+    --dataset.vcodec=auto \
+    --resume=false \
+    --dataset.push_to_hub=false \
+    --display_data=true
+```
