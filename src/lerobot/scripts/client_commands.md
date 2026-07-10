@@ -32,7 +32,7 @@ lerobot-record \
     --robot.type=bi_dobot_nova5_dh \
     --teleop.type=bi_pico4 \
     --dataset.repo_id=Xense/loreal_returns_sorting_0709 \
-    --dataset.num_episodes=3 \
+    --dataset.num_episodes=1 \
     --dataset.single_task="Pick up the returned cosmetic product, scan its barcode, and place it into the return cart." \
     --dataset.fps=30 \
     --dataset.episode_time_s=500 \

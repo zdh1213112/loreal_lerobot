@@ -1975,7 +1975,9 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
 
         try:
             with ThreadPoolExecutor(max_workers=2) as executor:
-                robot_future = executor.submit(robot.connect, go_to_start=True)
+                robot_future = executor.submit(
+                    robot.connect, go_to_start=robot.config.go_to_start
+                )
                 teleop_future = executor.submit(teleop.pre_init)
                 teleop_future.result()
                 robot_future.result()

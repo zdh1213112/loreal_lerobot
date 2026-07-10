@@ -895,7 +895,7 @@ class BiDobotNova5DH(Robot):
         feed = DobotApiFeedBack(robot_ip, feed_port)
         return robot, feed
 
-    def connect(self, calibrate: bool = False, go_to_start: bool = True) -> None:
+    def connect(self, calibrate: bool = False, go_to_start: bool | None = None) -> None:
         if self.is_connected:
             raise DeviceAlreadyConnectedError(
                 f"{self} already connected, do not run `robot.connect()` twice."

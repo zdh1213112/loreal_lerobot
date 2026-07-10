@@ -81,9 +81,9 @@ class BiDobotNova5DHConfig(RobotConfig):
     control_frequency: float = 100.0  # Hz
 
     # Connection behavior: if True, move to start positions after connect
-    go_to_start: bool = True
+    go_to_start: bool = False
     reset_move_order: ResetMoveOrder = ResetMoveOrder.RIGHT_THEN_LEFT
-    reset_strategy: ResetStrategy = ResetStrategy.SYNC_Y_CLEARANCE_THEN_JOINT
+    reset_strategy: ResetStrategy = ResetStrategy.SEQUENTIAL_JOINT
     reset_target: ResetTarget = ResetTarget.HOME
     reset_y_clearance_m: float = 0.035
     left_reset_y_clearance_sign: float = 1.0
