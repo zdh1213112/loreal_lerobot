@@ -1395,12 +1395,10 @@ def bi_dobot_nova5_dh_record_loop(
     timestamp = 0
     start_episode_t = time.perf_counter()
     is_resetting = False
-    prev_observation_frame = None
 
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
         loop_timing: dict[str, float] = {}
-        reset_triggered = False
         section_t = time.perf_counter()
         refresh_listener_events(events)
         loop_timing["events_ms"] = (time.perf_counter() - section_t) * 1e3
@@ -1417,17 +1415,35 @@ def bi_dobot_nova5_dh_record_loop(
             events["exit_early"] = False
             break
 
+        if is_resetting:
+            events["go_start"] = False
+            _record_loop_sleep(
+                start_loop_t=start_loop_t,
+                fps=fps,
+                start_episode_t=start_episode_t,
+                robot=robot,
+            )
+            timestamp = time.perf_counter() - start_episode_t
+            continue
+
         if events["go_start"] and isinstance(teleop, Teleoperator) and teleop.name == "bi_pico4":
             events["go_start"] = False
-            if hasattr(robot, "reset_to_initial_position") and not is_resetting:
+            if hasattr(robot, "reset_to_initial_position"):
                 is_resetting = True
-                reset_triggered = True
 
                 def _clear_reset():
                     nonlocal is_resetting
                     is_resetting = False
 
                 _start_reset_in_background(robot, teleop, set_done=_clear_reset)
+                _record_loop_sleep(
+                    start_loop_t=start_loop_t,
+                    fps=fps,
+                    start_episode_t=start_episode_t,
+                    robot=robot,
+                )
+                timestamp = time.perf_counter() - start_episode_t
+                continue
 
         section_t = time.perf_counter()
         obs = robot.get_observation()
@@ -1461,43 +1477,23 @@ def bi_dobot_nova5_dh_record_loop(
         section_t = time.perf_counter()
         teleop_action = teleop.get_action()
         loop_timing["teleop_ms"] = (time.perf_counter() - section_t) * 1e3
-        if is_resetting or reset_triggered:
-            section_t = time.perf_counter()
-            sent_action = {
-                k: obs[k]
-                for k in robot.action_features
-                if k in obs
-            }
-            loop_timing["reset_action_ms"] = (time.perf_counter() - section_t) * 1e3
-        else:
-            section_t = time.perf_counter()
-            action_values = teleop_action_processor((teleop_action, obs))
-            loop_timing["teleop_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+        section_t = time.perf_counter()
+        action_values = teleop_action_processor((teleop_action, obs))
+        loop_timing["teleop_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
 
-            section_t = time.perf_counter()
-            robot_action_to_send = robot_action_processor((action_values, obs))
-            loop_timing["robot_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+        section_t = time.perf_counter()
+        robot_action_to_send = robot_action_processor((action_values, obs))
+        loop_timing["robot_action_proc_ms"] = (time.perf_counter() - section_t) * 1e3
 
-            section_t = time.perf_counter()
-            sent_action = robot.send_action(robot_action_to_send)
-            loop_timing["send_action_ms"] = (time.perf_counter() - section_t) * 1e3
+        section_t = time.perf_counter()
+        sent_action = robot.send_action(robot_action_to_send)
+        loop_timing["send_action_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if dataset is not None:
             section_t = time.perf_counter()
-            if (is_resetting or reset_triggered) and prev_observation_frame is not None:
-                action_frame = build_dataset_frame(
-                    dataset.features, sent_action, prefix=ACTION
-                )
-                frame = {**prev_observation_frame, **action_frame, "task": single_task}
-                dataset.add_frame(frame)
-            elif not (is_resetting or reset_triggered):
-                action_frame = build_dataset_frame(
-                    dataset.features, sent_action, prefix=ACTION
-                )
-                frame = {**observation_frame, **action_frame, "task": single_task}
-                dataset.add_frame(frame)
-
-            prev_observation_frame = observation_frame
+            action_frame = build_dataset_frame(dataset.features, sent_action, prefix=ACTION)
+            frame = {**observation_frame, **action_frame, "task": single_task}
+            dataset.add_frame(frame)
             loop_timing["dataset_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if display_data:

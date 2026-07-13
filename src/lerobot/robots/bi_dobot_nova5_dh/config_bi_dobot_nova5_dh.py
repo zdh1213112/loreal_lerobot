@@ -157,7 +157,7 @@ class BiDobotNova5DHConfig(RobotConfig):
 
     left_dh_gripper_slave_id: int = 1
     left_dh_gripper_baudrate: int = 115200
-    left_dh_gripper_force: int = 100  # 20-100 %
+    left_dh_gripper_force: int = 40  # 20-100 %
     left_dh_gripper_init_open: bool = True
     left_dh_gripper_worker_frequency: float = 100.0  # Hz, best effort
     left_dh_gripper_position_poll_frequency: float = 20.0  # Hz
@@ -169,7 +169,7 @@ class BiDobotNova5DHConfig(RobotConfig):
     right_tool_identify: int = 1
     right_dh_gripper_slave_id: int = 1
     right_dh_gripper_baudrate: int = 115200
-    right_dh_gripper_force: int = 100  # 20-100 %
+    right_dh_gripper_force: int = 40  # 20-100 %
     right_dh_gripper_init_open: bool = True
     right_dh_gripper_worker_frequency: float = 100.0  # Hz, best effort
     right_dh_gripper_position_poll_frequency: float = 20.0  # Hz
