@@ -128,18 +128,18 @@ class BiDobotNova5DHConfig(RobotConfig):
     )
 
     left_home_point_list: list[float] = field(
-        default_factory=lambda: [-45, 0, -90, 0, 90, 0]
+        default_factory=lambda: [-40, 0, -145, 100, 100, 0]
     )
     right_home_point_list: list[float] = field(
-        default_factory=lambda: [225, 0, 90, 0, -90, 0]
+        default_factory=lambda: [220, 0, 135, -80, -88, 0]
     )
 
     # Start position parameters (for MoveJ primitive)
     left_start_position_degree: list[float] = field(
-        default_factory=lambda: [-45, 0, -90, 0, 90, 0]
+        default_factory=lambda: [-40, 0, -145, 100, 100, 0]
     )
     right_start_position_degree: list[float] = field(
-        default_factory=lambda: [225, 0, 90, 0, -90, 0]
+        default_factory=lambda: [220, 0, 135, -80, -88, 0]
     )
     # Joint velocity scale for moving to start position (1-100, default 30)
     start_vel_scale: int = 30
@@ -159,8 +159,8 @@ class BiDobotNova5DHConfig(RobotConfig):
     left_dh_gripper_baudrate: int = 115200
     left_dh_gripper_force: int = 40  # 20-100 %
     left_dh_gripper_init_open: bool = True
-    left_dh_gripper_worker_frequency: float = 100.0  # Hz, best effort
-    left_dh_gripper_position_poll_frequency: float = 20.0  # Hz
+    left_dh_gripper_worker_frequency: float = 30.0  # Hz, best effort
+    left_dh_gripper_position_poll_frequency: float = 2.0  # Hz
     left_dh_gripper_command_epsilon: float = 0.0
 
     # Right gripper Modbus RTU configuration
@@ -171,8 +171,8 @@ class BiDobotNova5DHConfig(RobotConfig):
     right_dh_gripper_baudrate: int = 115200
     right_dh_gripper_force: int = 40  # 20-100 %
     right_dh_gripper_init_open: bool = True
-    right_dh_gripper_worker_frequency: float = 100.0  # Hz, best effort
-    right_dh_gripper_position_poll_frequency: float = 20.0  # Hz
+    right_dh_gripper_worker_frequency: float = 30.0  # Hz, best effort
+    right_dh_gripper_position_poll_frequency: float = 2.0  # Hz
     right_dh_gripper_command_epsilon: float = 0.0
 
     # Auto-created in __post_init__ from dh_gripper_* parameters (do not set directly)
