@@ -99,7 +99,7 @@ class BiDobotNova5DHConfig(RobotConfig):
     cartesian_ik_servoj: bool = True
     cartesian_ik_backoff_steps: int = 6
     cartesian_ik_servoj_hold_s: float = 0.0
-    max_cartesian_step_m: float = 0.05
+    max_cartesian_step_m: float = 0.15
 
     # Keep record/teleop loops at camera FPS by enqueueing the newest action and
     # letting a background worker perform the blocking Dobot ServoP call.
@@ -115,7 +115,7 @@ class BiDobotNova5DHConfig(RobotConfig):
     # Format: [x, y, z].
     enable_clip: bool = True
     left_workspace_min_xyz_m: list[float] = field(
-        default_factory=lambda: [-0.60, -0.58, -0.175]
+        default_factory=lambda: [-0.60, -0.62, -0.175]
     )
     left_workspace_max_xyz_m: list[float] = field(
         default_factory=lambda: [0.68, 0.15, 0.69]
@@ -124,7 +124,7 @@ class BiDobotNova5DHConfig(RobotConfig):
         default_factory=lambda: [-0.60, -0.15, -0.167]
     )
     right_workspace_max_xyz_m: list[float] = field(
-        default_factory=lambda: [0.68, 0.58, 0.69]
+        default_factory=lambda: [0.68, 0.62, 0.69]
     )
 
     left_home_point_list: list[float] = field(
@@ -157,10 +157,10 @@ class BiDobotNova5DHConfig(RobotConfig):
 
     left_dh_gripper_slave_id: int = 1
     left_dh_gripper_baudrate: int = 115200
-    left_dh_gripper_force: int = 40  # 20-100 %
+    left_dh_gripper_force: int = 33  # 20-100 %
     left_dh_gripper_init_open: bool = True
-    left_dh_gripper_worker_frequency: float = 30.0  # Hz, best effort
-    left_dh_gripper_position_poll_frequency: float = 2.0  # Hz
+    left_dh_gripper_worker_frequency: float = 40.0  # Hz, best effort
+    left_dh_gripper_position_poll_frequency: float = 30.0  # Hz
     left_dh_gripper_command_epsilon: float = 0.0
 
     # Right gripper Modbus RTU configuration
@@ -169,10 +169,10 @@ class BiDobotNova5DHConfig(RobotConfig):
     right_tool_identify: int = 1
     right_dh_gripper_slave_id: int = 1
     right_dh_gripper_baudrate: int = 115200
-    right_dh_gripper_force: int = 40  # 20-100 %
+    right_dh_gripper_force: int = 33  # 20-100 %
     right_dh_gripper_init_open: bool = True
-    right_dh_gripper_worker_frequency: float = 30.0  # Hz, best effort
-    right_dh_gripper_position_poll_frequency: float = 2.0  # Hz
+    right_dh_gripper_worker_frequency: float = 40.0  # Hz, best effort
+    right_dh_gripper_position_poll_frequency: float = 30.0  # Hz
     right_dh_gripper_command_epsilon: float = 0.0
 
     # Auto-created in __post_init__ from dh_gripper_* parameters (do not set directly)

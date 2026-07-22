@@ -65,5 +65,7 @@ class Pico4Config(TeleoperatorConfig):
     orientation_offset_warning_deg: float = 180.0  # Warning threshold for orientation offset (degrees). Set to 180 to disable check.
     target_tcp_drift_max_deg: float = 45.0  # Max _target_quat vs actual TCP drift at grip-press (degrees). Set to 180 to disable.
     position_jump_threshold: float = 0.1  # Max allowed position change per frame (meters). Larger jumps are filtered out.
-    max_pos_velocity: float = 1.0  # Max allowed position velocity (m/s) for output rate limiter. 0 = disabled.
-    max_rot_velocity: float = 6.28  # Max allowed angular velocity (rad/s) for output rate limiter. 0 = disabled.
+    # max_pos_velocity: float = 1.0  # Max allowed position velocity (m/s) for output rate limiter. 0 = disabled.
+    # max_rot_velocity: float = 6.28  # Max allowed angular velocity (rad/s) for output rate limiter. 0 = disabled.
+    max_pos_velocity: float = 0  # Max allowed position velocity (m/s) for output rate limiter. 0 = disabled.
+    max_rot_velocity: float = 0  # Max allowed angular velocity (rad/s) for output rate limiter. 0 = disabled.
