@@ -33,6 +33,7 @@ import contextlib
 import re
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from typing import Any
 
@@ -158,6 +159,8 @@ class BiDobotNova5DH(Robot):
 
         self._left_robot: DobotApiDashboard | None = None
         self._right_robot: DobotApiDashboard | None = None
+        self._left_gripper_robot: DobotApiDashboard | None = None
+        self._right_gripper_robot: DobotApiDashboard | None = None
         self._left_feed: DobotApiFeedBack | None = None
         self._right_feed: DobotApiFeedBack | None = None
 
@@ -187,6 +190,9 @@ class BiDobotNova5DH(Robot):
         self._async_action_drop_count = 0
         self._async_action_send_count = 0
         self._async_action_error_count = 0
+        self._arm_send_executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="BiDobotNova5DHArmSend"
+        )
 
         self._left_gripper: DHGripperIntegrated | None = None
         if config.use_left_gripper:
@@ -895,6 +901,53 @@ class BiDobotNova5DH(Robot):
         feed = DobotApiFeedBack(robot_ip, feed_port)
         return robot, feed
 
+    def _create_gripper_modbus(
+        self,
+        side: str,
+        robot_ip: str,
+        dashboard_port: int,
+        control_robot: DobotApiDashboard,
+        master_ip: str,
+        master_port: int,
+        slave_id: int,
+    ) -> tuple[_DobotModbusRTU, DobotApiDashboard | None]:
+        last_error: Exception | None = None
+        if self.config.dedicated_gripper_dashboard:
+            dedicated_robot: DobotApiDashboard | None = None
+            try:
+                self.logger.info(
+                    f"Connecting {side} DH gripper on dedicated Dashboard socket: "
+                    f"{robot_ip}:{dashboard_port}"
+                )
+                dedicated_robot = DobotApiDashboard(robot_ip, dashboard_port)
+                modbus = _DobotModbusRTU(
+                    dedicated_robot,
+                    master_ip,
+                    master_port,
+                    slave_id,
+                )
+                return modbus, dedicated_robot
+            except Exception as exc:
+                last_error = exc
+                if dedicated_robot is not None:
+                    with contextlib.suppress(Exception):
+                        dedicated_robot.close()
+                self.logger.warn(
+                    f"{side} dedicated gripper Dashboard failed, falling back to shared "
+                    f"robot Dashboard: {exc}"
+                )
+
+        try:
+            modbus = _DobotModbusRTU(control_robot, master_ip, master_port, slave_id)
+            return modbus, None
+        except Exception as exc:
+            if last_error is not None:
+                raise RuntimeError(
+                    f"{side} gripper Modbus failed on both dedicated and shared Dashboard "
+                    f"connections. dedicated={last_error}; shared={exc}"
+                ) from exc
+            raise
+
     def connect(self, calibrate: bool = False, go_to_start: bool | None = None) -> None:
         if self.is_connected:
             raise DeviceAlreadyConnectedError(
@@ -1015,7 +1068,10 @@ class BiDobotNova5DH(Robot):
                         ),
                         "left SetTool485",
                     )
-                    left_modbus = _DobotModbusRTU(
+                    left_modbus, self._left_gripper_robot = self._create_gripper_modbus(
+                        "left",
+                        self.config.left_robot_ip,
+                        self.config.left_dashboardPort,
                         self._left_robot,
                         self.config.left_master_ip,
                         self.config.left_master_port,
@@ -1024,6 +1080,10 @@ class BiDobotNova5DH(Robot):
                     self._left_gripper.connect(left_modbus)
                     self._left_gripper_connected = True
                 except Exception as e:
+                    if self._left_gripper_robot is not None:
+                        with contextlib.suppress(Exception):
+                            self._left_gripper_robot.close()
+                        self._left_gripper_robot = None
                     self._left_gripper_connected = False
                     self.logger.error(
                         f"Failed to connect left DH Gripper, continuing without left gripper control: {e}"
@@ -1046,7 +1106,10 @@ class BiDobotNova5DH(Robot):
                         ),
                         "right SetTool485",
                     )
-                    right_modbus = _DobotModbusRTU(
+                    right_modbus, self._right_gripper_robot = self._create_gripper_modbus(
+                        "right",
+                        self.config.right_robot_ip,
+                        self.config.right_dashboardPort,
                         self._right_robot,
                         self.config.right_master_ip,
                         self.config.right_master_port,
@@ -1055,6 +1118,10 @@ class BiDobotNova5DH(Robot):
                     self._right_gripper.connect(right_modbus)
                     self._right_gripper_connected = True
                 except Exception as e:
+                    if self._right_gripper_robot is not None:
+                        with contextlib.suppress(Exception):
+                            self._right_gripper_robot.close()
+                        self._right_gripper_robot = None
                     self._right_gripper_connected = False
                     self.logger.error(
                         f"Failed to connect right DH Gripper, continuing without right gripper control: {e}"
@@ -1073,9 +1140,35 @@ class BiDobotNova5DH(Robot):
             self._start_action_worker()
             self.logger.info("✅ BiDobot Nova5 connected and ready.")
         except Exception:
+            if self._left_gripper and self._left_gripper_connected:
+                with contextlib.suppress(Exception):
+                    self._left_gripper.disconnect()
+            if self._right_gripper and self._right_gripper_connected:
+                with contextlib.suppress(Exception):
+                    self._right_gripper.disconnect()
+            if self._left_robot is not None:
+                with contextlib.suppress(Exception):
+                    self._left_robot.close()
+            if self._right_robot is not None:
+                with contextlib.suppress(Exception):
+                    self._right_robot.close()
+            if self._left_gripper_robot is not None:
+                with contextlib.suppress(Exception):
+                    self._left_gripper_robot.close()
+            if self._right_gripper_robot is not None:
+                with contextlib.suppress(Exception):
+                    self._right_gripper_robot.close()
+            if self._left_feed is not None:
+                with contextlib.suppress(Exception):
+                    self._left_feed.close()
+            if self._right_feed is not None:
+                with contextlib.suppress(Exception):
+                    self._right_feed.close()
             self._is_connected = False
             self._left_robot = None
             self._right_robot = None
+            self._left_gripper_robot = None
+            self._right_gripper_robot = None
             self._left_feed = None
             self._right_feed = None
             self._left_gripper_connected = False
@@ -1189,12 +1282,22 @@ class BiDobotNova5DH(Robot):
     def _read_gripper_pos(self, side: str) -> float:
         if side == "left":
             if self._left_gripper and self.config.use_left_gripper:
-                return float(self._left_gripper.get_gripper_position())
+                return self._normalize_gripper_command(
+                    float(self._left_gripper.get_gripper_position())
+                )
             return 0.0
         else:
             if self._right_gripper and self.config.use_right_gripper:
-                return float(self._right_gripper.get_gripper_position())
+                return self._normalize_gripper_command(
+                    float(self._right_gripper.get_gripper_position())
+                )
             return 0.0
+
+    def _normalize_gripper_command(self, position: float) -> float:
+        clipped = max(0.0, min(1.0, float(position)))
+        if not self.config.binary_gripper_actions:
+            return clipped
+        return 1.0 if clipped >= float(self.config.gripper_open_threshold) else 0.0
 
     def get_current_tcp_pose_quat(self) -> tuple[np.ndarray, np.ndarray]:
         if not self.is_connected:
@@ -1628,9 +1731,9 @@ class BiDobotNova5DH(Robot):
             and self._left_gripper_key in action
         ):
             try:
-                self._left_gripper.set_gripper_position(
-                    float(action[self._left_gripper_key])
-                )
+                left_position = self._normalize_gripper_command(action[self._left_gripper_key])
+                action[self._left_gripper_key] = left_position
+                self._left_gripper.set_gripper_position(left_position)
             except Exception as e:
                 self._left_gripper_connected = False
                 self.logger.error(
@@ -1643,14 +1746,41 @@ class BiDobotNova5DH(Robot):
             and self._right_gripper_key in action
         ):
             try:
-                self._right_gripper.set_gripper_position(
-                    float(action[self._right_gripper_key])
-                )
+                right_position = self._normalize_gripper_command(action[self._right_gripper_key])
+                action[self._right_gripper_key] = right_position
+                self._right_gripper.set_gripper_position(right_position)
             except Exception as e:
                 self._right_gripper_connected = False
                 self.logger.error(
                     f"Right DH gripper command failed, disabling right gripper commands for this session: {e}"
                 )
+
+    def _send_arm_commands_parallel(
+        self,
+        left_send,
+        right_send,
+        action_timing: dict[str, float],
+    ) -> None:
+        parallel_start_s = time.perf_counter()
+
+        def timed_send(side: str, send_fn):
+            side_start_s = time.perf_counter()
+            send_fn()
+            return side, (time.perf_counter() - side_start_s) * 1e3
+
+        left_future = self._arm_send_executor.submit(timed_send, "left", left_send)
+        right_future = self._arm_send_executor.submit(timed_send, "right", right_send)
+        first_error: Exception | None = None
+        for future in (left_future, right_future):
+            try:
+                side, elapsed_ms = future.result()
+                action_timing[f"{side}_arm_ms"] = elapsed_ms
+            except Exception as exc:
+                if first_error is None:
+                    first_error = exc
+        action_timing["arms_parallel_ms"] = (time.perf_counter() - parallel_start_s) * 1e3
+        if first_error is not None:
+            raise first_error
 
     def _action_worker_loop(self) -> None:
         min_period_s = 1.0 / max(float(self.config.async_action_worker_frequency), 1e-6)
@@ -1811,25 +1941,35 @@ class BiDobotNova5DH(Robot):
             return action
 
         if self.config.control_mode == ControlMode.JOINT_MOTION:
-            section_s = time.perf_counter()
-            self._send_joint_action_one_arm(
+            left_send = lambda: self._send_joint_action_one_arm(
                 self._left_robot, action, self._left_action_joint_keys, "left"
             )
-            action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
-
-            section_s = time.perf_counter()
-            self._send_joint_action_one_arm(
+            right_send = lambda: self._send_joint_action_one_arm(
                 self._right_robot, action, self._right_action_joint_keys, "right"
             )
-            action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
-        elif self.config.control_mode == ControlMode.CARTESIAN_MOTION:
-            section_s = time.perf_counter()
-            self._send_cart_action_one_arm(self._left_robot, action, "left", "left")
-            action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+            if self.config.parallel_arm_send:
+                self._send_arm_commands_parallel(left_send, right_send, action_timing)
+            else:
+                section_s = time.perf_counter()
+                left_send()
+                action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
 
-            section_s = time.perf_counter()
-            self._send_cart_action_one_arm(self._right_robot, action, "right", "right")
-            action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+                section_s = time.perf_counter()
+                right_send()
+                action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+        elif self.config.control_mode == ControlMode.CARTESIAN_MOTION:
+            left_send = lambda: self._send_cart_action_one_arm(self._left_robot, action, "left", "left")
+            right_send = lambda: self._send_cart_action_one_arm(self._right_robot, action, "right", "right")
+            if self.config.parallel_arm_send:
+                self._send_arm_commands_parallel(left_send, right_send, action_timing)
+            else:
+                section_s = time.perf_counter()
+                left_send()
+                action_timing["left_arm_ms"] = (time.perf_counter() - section_s) * 1e3
+
+                section_s = time.perf_counter()
+                right_send()
+                action_timing["right_arm_ms"] = (time.perf_counter() - section_s) * 1e3
         else:
             raise ValueError(f"Unsupported control_mode: {self.config.control_mode}")
 
@@ -1902,6 +2042,10 @@ class BiDobotNova5DH(Robot):
             if self._right_robot is not None:
                 self._right_robot.Stop()
                 self._right_robot.close()
+            if self._left_gripper_robot is not None:
+                self._left_gripper_robot.close()
+            if self._right_gripper_robot is not None:
+                self._right_gripper_robot.close()
             if self._left_feed is not None:
                 self._left_feed.close()
             if self._right_feed is not None:
@@ -1912,8 +2056,11 @@ class BiDobotNova5DH(Robot):
         except Exception as e:
             self.logger.error(f"Error during disconnect: {e}")
         finally:
+            self._arm_send_executor.shutdown(wait=False, cancel_futures=True)
             self._left_robot = None
             self._right_robot = None
+            self._left_gripper_robot = None
+            self._right_gripper_robot = None
             self._left_feed = None
             self._right_feed = None
             self._left_gripper = None

@@ -50,8 +50,8 @@ class DHGripperIntegratedConfig:
                           Must be at least 10 Hz. Defaults to 100 Hz to match the
                           Nova5 NRT control-rate ceiling.
         position_poll_frequency: Background current-position read frequency in Hz.
-                                 Kept lower than worker_frequency by default to
-                                 avoid flooding the shared Dashboard socket.
+                                 Set 0 to disable hardware position polling and
+                                 use the latest commanded position as cached state.
         command_epsilon: Minimum normalized target-position change before the
                          worker sends another position register write.
     """
@@ -98,10 +98,10 @@ class DHGripperIntegratedConfig:
                 f"DHGripperIntegratedConfig: worker_frequency must be at least 10 Hz, "
                 f"got {self.worker_frequency}."
             )
-        if not 0.0 < self.position_poll_frequency <= self.worker_frequency:
+        if not 0.0 <= self.position_poll_frequency <= self.worker_frequency:
             raise ValueError(
                 "DHGripperIntegratedConfig: position_poll_frequency must be in "
-                f"(0, worker_frequency], got {self.position_poll_frequency}."
+                f"[0, worker_frequency], got {self.position_poll_frequency}."
             )
         if not 0.0 <= self.command_epsilon <= 1.0:
             raise ValueError(

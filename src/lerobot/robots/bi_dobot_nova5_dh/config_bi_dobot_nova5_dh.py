@@ -105,6 +105,7 @@ class BiDobotNova5DHConfig(RobotConfig):
     # letting a background worker perform the blocking Dobot ServoP call.
     async_action_worker: bool = True
     async_action_worker_frequency: float = 30.0
+    parallel_arm_send: bool = True
 
     # Tool coordinate for Cartesian teleoperation. Tool 0 is the flange.
     use_tool_coordinate: bool = True
@@ -149,6 +150,9 @@ class BiDobotNova5DHConfig(RobotConfig):
     # Grippers communicate via the arm's built-in RS485 end-effector port (Modbus RTU).
     use_left_gripper: bool = True
     use_right_gripper: bool = True
+    dedicated_gripper_dashboard: bool = True
+    binary_gripper_actions: bool = True
+    gripper_open_threshold: float = 0.5
 
     # Left gripper Modbus RTU configuration
     left_master_ip: str = "192.168.201.1"
@@ -159,8 +163,8 @@ class BiDobotNova5DHConfig(RobotConfig):
     left_dh_gripper_baudrate: int = 115200
     left_dh_gripper_force: int = 33  # 20-100 %
     left_dh_gripper_init_open: bool = True
-    left_dh_gripper_worker_frequency: float = 40.0  # Hz, best effort
-    left_dh_gripper_position_poll_frequency: float = 30.0  # Hz
+    left_dh_gripper_worker_frequency: float = 50.0  # Hz, best effort
+    left_dh_gripper_position_poll_frequency: float = 0  # Hz
     left_dh_gripper_command_epsilon: float = 0.0
 
     # Right gripper Modbus RTU configuration
@@ -171,8 +175,8 @@ class BiDobotNova5DHConfig(RobotConfig):
     right_dh_gripper_baudrate: int = 115200
     right_dh_gripper_force: int = 33  # 20-100 %
     right_dh_gripper_init_open: bool = True
-    right_dh_gripper_worker_frequency: float = 40.0  # Hz, best effort
-    right_dh_gripper_position_poll_frequency: float = 30.0  # Hz
+    right_dh_gripper_worker_frequency: float = 50.0  # Hz, best effort
+    right_dh_gripper_position_poll_frequency: float = 0  # Hz
     right_dh_gripper_command_epsilon: float = 0.0
 
     # Auto-created in __post_init__ from dh_gripper_* parameters (do not set directly)
@@ -233,6 +237,10 @@ class BiDobotNova5DHConfig(RobotConfig):
         if self.max_cartesian_step_m < 0:
             raise ValueError(
                 f"max_cartesian_step_m must be >= 0, got {self.max_cartesian_step_m}"
+            )
+        if not 0.0 <= self.gripper_open_threshold <= 1.0:
+            raise ValueError(
+                f"gripper_open_threshold must be in [0, 1], got {self.gripper_open_threshold}"
             )
         self._validate_tool_coordinate_index(
             self.left_tool_coordinate_index, "left_tool_coordinate_index"

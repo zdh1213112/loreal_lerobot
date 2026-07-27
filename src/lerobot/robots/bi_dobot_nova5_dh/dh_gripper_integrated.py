@@ -179,7 +179,8 @@ class DHGripperIntegrated:
     def _worker_loop(self) -> None:
         """Daemon thread: send latest target and refresh cached position."""
         interval_s = 1.0 / self._config.worker_frequency
-        read_interval_s = 1.0 / self._config.position_poll_frequency
+        poll_enabled = self._config.position_poll_frequency > 0.0
+        read_interval_s = 1.0 / self._config.position_poll_frequency if poll_enabled else None
         next_read_time = time.monotonic()
         consecutive_failures = 0
         while self._worker_running:
@@ -212,6 +213,8 @@ class DHGripperIntegrated:
                     if self._write_register(_REG_POSITION, target_dh_pos):
                         with self._state_lock:
                             self._last_sent_position = target_position
+                            if not poll_enabled:
+                                self._cached_position = target_position
                             if (
                                 self._target_position is not None
                                 and abs(self._target_position - target_position) < 1e-9
@@ -226,6 +229,11 @@ class DHGripperIntegrated:
                             and abs(self._target_position - target_position) < 1e-9
                         ):
                             self._target_dirty = False
+
+            if not poll_enabled:
+                elapsed = time.monotonic() - tick_start
+                time.sleep(max(0.0, interval_s - elapsed))
+                continue
 
             now = time.monotonic()
             if now < next_read_time:

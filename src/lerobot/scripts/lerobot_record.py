@@ -25,6 +25,8 @@ from pathlib import Path
 from pprint import pformat
 from typing import Any
 
+import numpy as np
+
 from lerobot.cameras import (  # noqa: F401
     CameraConfig,  # noqa: F401
 )
@@ -91,6 +93,8 @@ from lerobot.utils.utils import (
 from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 
 logger = get_logger("lerobot_record")
+
+BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES = 10
 
 _BUILTIN_CAMERA_CONFIG_MODULES = (
     "lerobot.cameras.opencv.configuration_opencv",
@@ -604,6 +608,101 @@ def _sync_rt_teleop_to_robot_pose(robot: Robot, teleop: Teleoperator | None) -> 
     elif teleop.name in {"pico4", "btgamepad"}:
         pose = robot.get_current_tcp_pose_quat()
         teleop.reset_to_pose(pose[:7], pose[7])
+
+
+def _rewrite_recent_actions_from_observations(
+    dataset: LeRobotDataset | None,
+    count: int,
+) -> int:
+    if dataset is None or dataset.episode_buffer is None or count <= 0:
+        return 0
+
+    episode_buffer = dataset.episode_buffer
+    available = min(count, int(episode_buffer.get("size", 0)))
+    if available <= 0:
+        return 0
+
+    action_feature = dataset.features.get(ACTION)
+    obs_feature = dataset.features.get(f"{OBS_STR}.state")
+    if action_feature is None or obs_feature is None:
+        return 0
+
+    action_names = list(action_feature.get("names") or [])
+    obs_names = list(obs_feature.get("names") or [])
+    if not action_names or not obs_names:
+        return 0
+
+    action_values = episode_buffer.get(ACTION)
+    obs_values = episode_buffer.get(f"{OBS_STR}.state")
+    if action_values is None or obs_values is None:
+        return 0
+
+    obs_index_by_name = {name: idx for idx, name in enumerate(obs_names)}
+    rewritten = 0
+    for frame_offset in range(1, available + 1):
+        action = action_values[-frame_offset]
+        obs = obs_values[-frame_offset]
+        corrected = action.copy() if hasattr(action, "copy") else list(action)
+
+        changed = False
+        for action_idx, name in enumerate(action_names):
+            obs_idx = obs_index_by_name.get(name)
+            if obs_idx is None:
+                continue
+            corrected[action_idx] = obs[obs_idx]
+            changed = True
+
+        if changed:
+            action_values[-frame_offset] = corrected
+            rewritten += 1
+
+    return rewritten
+
+
+def _build_action_frame_from_observation_frame(
+    ds_features: dict[str, dict],
+    observation_frame: dict[str, Any],
+) -> dict[str, np.ndarray] | None:
+    action_feature = ds_features.get(ACTION)
+    obs_feature = ds_features.get(f"{OBS_STR}.state")
+    obs_state = observation_frame.get(f"{OBS_STR}.state")
+    if action_feature is None or obs_feature is None or obs_state is None:
+        return None
+
+    action_names = list(action_feature.get("names") or [])
+    obs_names = list(obs_feature.get("names") or [])
+    if not action_names or not obs_names:
+        return None
+
+    obs_index_by_name = {name: idx for idx, name in enumerate(obs_names)}
+    if any(name not in obs_index_by_name for name in action_names):
+        return None
+
+    action = np.array(
+        [obs_state[obs_index_by_name[name]] for name in action_names],
+        dtype=np.float32,
+    )
+    return {ACTION: action}
+
+
+def _align_disabled_bimanual_arm_actions_to_observation(
+    action: RobotAction,
+    control_action: RobotAction,
+    observation: RobotObservation,
+) -> RobotAction:
+    aligned_action = dict(action)
+
+    for side in ("left", "right"):
+        enabled_key = f"{side}_arm.enabled"
+        if enabled_key not in control_action or bool(control_action[enabled_key]):
+            continue
+
+        for suffix in ("x", "y", "z", "r1", "r2", "r3", "r4", "r5", "r6"):
+            tcp_key = f"{side}_tcp.{suffix}"
+            if tcp_key in aligned_action and tcp_key in observation:
+                aligned_action[tcp_key] = observation[tcp_key]
+
+    return aligned_action
 
 
 def _use_raw_passthrough_record(robot_type: str, teleop_type: str | None) -> bool:
@@ -1395,6 +1494,10 @@ def bi_dobot_nova5_dh_record_loop(
     timestamp = 0
     start_episode_t = time.perf_counter()
     is_resetting = False
+    reset_completed = False
+    prev_reset_observation_frame = None
+    post_reset_skip_frames = 0
+    post_reset_wait_grip_release = False
 
     while timestamp < control_time_s:
         start_loop_t = time.perf_counter()
@@ -1415,8 +1518,147 @@ def bi_dobot_nova5_dh_record_loop(
             events["exit_early"] = False
             break
 
+        if post_reset_skip_frames > 0:
+            post_reset_skip_frames -= 1
+            events["go_start"] = False
+            _sync_rt_teleop_to_robot_pose(robot, teleop)
+            _record_loop_sleep(
+                start_loop_t=start_loop_t,
+                fps=fps,
+                start_episode_t=start_episode_t,
+                robot=robot,
+            )
+            timestamp = time.perf_counter() - start_episode_t
+            continue
+
+        if post_reset_wait_grip_release:
+            events["go_start"] = False
+            grip_active = False
+            if isinstance(teleop, Teleoperator) and teleop.name == "bi_pico4":
+                left_pose, right_pose = robot.get_current_tcp_pose_quat()
+                probe_action = teleop.get_action(
+                    left_tcp_pose_quat=left_pose,
+                    right_tcp_pose_quat=right_pose,
+                )
+                grip_active = bool(
+                    probe_action.get("left_arm.enabled", False)
+                    or probe_action.get("right_arm.enabled", False)
+                )
+                _sync_rt_teleop_to_robot_pose(robot, teleop)
+
+            if not grip_active:
+                post_reset_wait_grip_release = False
+
+            _record_loop_sleep(
+                start_loop_t=start_loop_t,
+                fps=fps,
+                start_episode_t=start_episode_t,
+                robot=robot,
+            )
+            timestamp = time.perf_counter() - start_episode_t
+            continue
+
         if is_resetting:
             events["go_start"] = False
+
+            if reset_completed:
+                reset_completed = False
+                section_t = time.perf_counter()
+                obs = robot.get_observation()
+                loop_timing["reset_final_get_obs_ms"] = (time.perf_counter() - section_t) * 1e3
+
+                section_t = time.perf_counter()
+                obs_processed = robot_observation_processor(obs)
+                loop_timing["reset_final_obs_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+
+                if dataset is not None and prev_reset_observation_frame is not None:
+                    section_t = time.perf_counter()
+                    final_observation_frame = build_dataset_frame(
+                        dataset.features, obs_processed, prefix=OBS_STR
+                    )
+                    action_frame = _build_action_frame_from_observation_frame(
+                        dataset.features,
+                        final_observation_frame,
+                    )
+                    if action_frame is not None:
+                        frame = {
+                            **prev_reset_observation_frame,
+                            **action_frame,
+                            "task": single_task,
+                        }
+                        dataset.add_frame(frame)
+                    loop_timing["reset_final_dataset_ms"] = (
+                        time.perf_counter() - section_t
+                    ) * 1e3
+
+                prev_reset_observation_frame = None
+                post_reset_skip_frames = BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
+                post_reset_wait_grip_release = True
+                is_resetting = False
+                _sync_rt_teleop_to_robot_pose(robot, teleop)
+                _record_loop_sleep(
+                    start_loop_t=start_loop_t,
+                    fps=fps,
+                    start_episode_t=start_episode_t,
+                    robot=robot,
+                )
+                timestamp = time.perf_counter() - start_episode_t
+                continue
+
+            section_t = time.perf_counter()
+            obs = robot.get_observation()
+            loop_timing["reset_get_obs_ms"] = (time.perf_counter() - section_t) * 1e3
+
+            section_t = time.perf_counter()
+            obs_processed = robot_observation_processor(obs)
+            loop_timing["reset_obs_proc_ms"] = (time.perf_counter() - section_t) * 1e3
+
+            observation_frame = None
+            if dataset is not None:
+                section_t = time.perf_counter()
+                observation_frame = build_dataset_frame(
+                    dataset.features, obs_processed, prefix=OBS_STR
+                )
+                loop_timing["reset_build_obs_frame_ms"] = (
+                    time.perf_counter() - section_t
+                ) * 1e3
+
+            if dataset is not None and observation_frame is not None:
+                section_t = time.perf_counter()
+                action_frame = _build_action_frame_from_observation_frame(
+                    dataset.features,
+                    observation_frame,
+                )
+                if action_frame is None:
+                    reset_action = {
+                        key: obs_processed[key]
+                        for key in robot.action_features
+                        if key in obs_processed
+                    }
+                    action_frame = build_dataset_frame(
+                        dataset.features, reset_action, prefix=ACTION
+                    )
+                if prev_reset_observation_frame is not None:
+                    frame = {
+                        **prev_reset_observation_frame,
+                        **action_frame,
+                        "task": single_task,
+                    }
+                    dataset.add_frame(frame)
+                loop_timing["reset_dataset_ms"] = (time.perf_counter() - section_t) * 1e3
+
+            prev_reset_observation_frame = observation_frame
+
+            if display_data:
+                reset_action = {
+                    key: obs_processed[key]
+                    for key in robot.action_features
+                    if key in obs_processed
+                }
+                log_rerun_data(observation=obs_processed, action=reset_action)
+
+            loop_timing["pre_sleep_total_ms"] = (time.perf_counter() - start_loop_t) * 1e3
+            setattr(robot, "_last_record_loop_timing", loop_timing)
             _record_loop_sleep(
                 start_loop_t=start_loop_t,
                 fps=fps,
@@ -1429,11 +1671,26 @@ def bi_dobot_nova5_dh_record_loop(
         if events["go_start"] and isinstance(teleop, Teleoperator) and teleop.name == "bi_pico4":
             events["go_start"] = False
             if hasattr(robot, "reset_to_initial_position"):
+                rewritten = _rewrite_recent_actions_from_observations(
+                    dataset, count=BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
+                )
+                if rewritten > 0:
+                    logger.info(
+                        f"Aligned {rewritten} pre-reset action frame(s) to observations."
+                    )
+                prev_reset_observation_frame = None
+                if dataset is not None:
+                    obs = robot.get_observation()
+                    obs_processed = robot_observation_processor(obs)
+                    prev_reset_observation_frame = build_dataset_frame(
+                        dataset.features, obs_processed, prefix=OBS_STR
+                    )
+
                 is_resetting = True
 
                 def _clear_reset():
-                    nonlocal is_resetting
-                    is_resetting = False
+                    nonlocal reset_completed
+                    reset_completed = True
 
                 _start_reset_in_background(robot, teleop, set_done=_clear_reset)
                 _record_loop_sleep(
@@ -1487,6 +1744,11 @@ def bi_dobot_nova5_dh_record_loop(
 
         section_t = time.perf_counter()
         sent_action = robot.send_action(robot_action_to_send)
+        sent_action = _align_disabled_bimanual_arm_actions_to_observation(
+            sent_action,
+            teleop_action,
+            obs_processed,
+        )
         loop_timing["send_action_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if dataset is not None:
