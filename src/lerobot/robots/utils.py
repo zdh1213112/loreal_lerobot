@@ -52,6 +52,10 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
         from .bi_dobot_nova5_dh import BiDobotNova5DH
 
         return BiDobotNova5DH(config)
+    elif config.type == "dobot_nova5_dh":
+        from .dobot_nova5_dh import DobotNova5DH
+
+        return DobotNova5DH(config)
     elif config.type == "pylibfranka_research3":
         from .pylibfranka_research3 import PylibfrankaResearch3
 

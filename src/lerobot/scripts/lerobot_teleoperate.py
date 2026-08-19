@@ -256,6 +256,7 @@ _BUILTIN_ROBOT_CONFIG_MODULES = {
     "bi_flexiv_rizon4_rt": "lerobot.robots.bi_flexiv_rizon4_rt.config_bi_flexiv_rizon4_rt",
     "bi_xense_flare_grippers": "lerobot.robots.bi_xense_flare_grippers.config_bi_xense_flare_grippers",
     "dobot_nova5": "lerobot.robots.dobot_nova5.config_dobot_nova5",
+    "dobot_nova5_dh": "lerobot.robots.dobot_nova5_dh.config_dobot_nova5_dh",
     "flexiv_rizon4": "lerobot.robots.flexiv_rizon4.config_flexiv_rizon4",
     "flexiv_rizon4_rt": "lerobot.robots.flexiv_rizon4_rt.config_flexiv_rizon4_rt",
     "mock_robot": "lerobot.robots.mock_robot",
@@ -2746,7 +2747,7 @@ def teleoperate(cfg: TeleoperateConfig):
 
         # ======================== Pylibfranka Research3 ========================
         # Check if this is Pylibfranka Research3 robot with pico4
-        elif cfg.robot.type == "dobot_nova5" and cfg.teleop.type == "pico4":
+        elif cfg.robot.type in {"dobot_nova5", "dobot_nova5_dh"} and cfg.teleop.type == "pico4":
             logger.info(
                 "Detected Dobot Nova5 robot with Pico4, using specialized teleop loop"
             )
@@ -2759,9 +2760,14 @@ def teleoperate(cfg: TeleoperateConfig):
                 robot = make_robot_from_config(cfg.robot)
 
                 # Ensure robot is in CARTESIAN_IMPEDANCE mode for pico4 teleop
-                from lerobot.robots.dobot_nova5.config_dobot_nova5 import (
-                    ControlMode as DobotNova5ControlMode,
-                )
+                if cfg.robot.type == "dobot_nova5_dh":
+                    from lerobot.robots.dobot_nova5_dh.config_dobot_nova5_dh import (
+                        ControlMode as DobotNova5ControlMode,
+                    )
+                else:
+                    from lerobot.robots.dobot_nova5.config_dobot_nova5 import (
+                        ControlMode as DobotNova5ControlMode,
+                    )
 
                 if robot.config.control_mode != DobotNova5ControlMode.CARTESIAN_MOTION:
                     raise ValueError(

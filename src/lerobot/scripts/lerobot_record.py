@@ -110,6 +110,7 @@ _BUILTIN_ROBOT_CONFIG_MODULES = {
     "bi_flexiv_rizon4_rt": "lerobot.robots.bi_flexiv_rizon4_rt.config_bi_flexiv_rizon4_rt",
     "bi_xense_flare_grippers": "lerobot.robots.bi_xense_flare_grippers.config_bi_xense_flare_grippers",
     "dobot_nova5": "lerobot.robots.dobot_nova5.config_dobot_nova5",
+    "dobot_nova5_dh": "lerobot.robots.dobot_nova5_dh.config_dobot_nova5_dh",
     "flexiv_rizon4": "lerobot.robots.flexiv_rizon4.config_flexiv_rizon4",
     "flexiv_rizon4_rt": "lerobot.robots.flexiv_rizon4_rt.config_flexiv_rizon4_rt",
     "mock_robot": "lerobot.robots.mock_robot",
@@ -350,6 +351,7 @@ RAW_PASSTHROUGH_RECORD_PAIRS = frozenset(
         ("flexiv_rizon4", "pico4"),
         ("flexiv_rizon4", "btgamepad"),
         ("flexiv_rizon4_rt", "pico4"),
+        ("dobot_nova5_dh", "pico4"),
         ("bi_flexiv_rizon4_rt", "bi_pico4"),
         ("bi_dobot_nova5_dh", "bi_pico4"),
         ("pylibfranka_research3", "pico4"),
@@ -2207,12 +2209,11 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
             },
         )
 
-    if (
-        teleop_type == "pico4"
-        and cfg.robot.type == "flexiv_rizon4"
-        or teleop_type == "pico4"
-        and cfg.robot.type == "flexiv_rizon4_rt"
-    ):
+    if teleop_type == "pico4" and cfg.robot.type in {
+        "dobot_nova5_dh",
+        "flexiv_rizon4",
+        "flexiv_rizon4_rt",
+    }:
         robot.connect(go_to_start=True)
         logger.info(f"Start EEF pose: {robot.get_current_tcp_pose_quat()}")
     elif (
@@ -2256,11 +2257,13 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
     if teleop is not None:
         if (
             teleop_type == "pico4"
-            and cfg.robot.type == "flexiv_rizon4"
+            and cfg.robot.type in {
+                "dobot_nova5_dh",
+                "flexiv_rizon4",
+                "flexiv_rizon4_rt",
+            }
             or teleop_type == "btgamepad"
             and cfg.robot.type == "flexiv_rizon4"
-            or teleop_type == "pico4"
-            and cfg.robot.type == "flexiv_rizon4_rt"
         ):
             teleop.connect(current_tcp_pose_quat=robot.get_current_tcp_pose_quat())
             logger.info("Teleop initialized with robot EEF pose.")

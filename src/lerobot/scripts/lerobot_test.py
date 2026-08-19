@@ -370,6 +370,7 @@ def _register_builtin_devices(device_types: list[str] | None = None) -> dict[str
             "lerobot.robots.bi_arx5.config_bi_arx5",
             "lerobot.robots.arx5_follower.config_arx5_follower",
             "lerobot.robots.flexiv_rizon4.config_flexiv_rizon4",
+            "lerobot.robots.dobot_nova5_dh.config_dobot_nova5_dh",
         ],
         "teleoperators": [
             "lerobot.teleoperators.keyboard.configuration_keyboard",
