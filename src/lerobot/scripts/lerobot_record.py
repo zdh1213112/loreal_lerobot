@@ -1907,7 +1907,7 @@ def record_loop(
             events["go_start"]
             and isinstance(teleop, Teleoperator)
             and teleop.name == "pico4"
-            and robot.name == "flexiv_rizon4"
+            and robot.name in {"dobot_nova5_dh", "flexiv_rizon4"}
         ):
             events["go_start"] = False
             if hasattr(robot, "reset_to_initial_position"):

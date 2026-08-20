@@ -476,7 +476,7 @@ class DHGripperIntegrated:
                 return
             time.sleep(_SYNC_POLL_INTERVAL_S)
 
-        self._logger.warning(
+        self._logger.warn(
             f"set_gripper_position_sync timed out after {timeout:.1f} s "
             f"(target normalized={normalized_pos:.3f}, dh_pos={dh_pos})."
         )

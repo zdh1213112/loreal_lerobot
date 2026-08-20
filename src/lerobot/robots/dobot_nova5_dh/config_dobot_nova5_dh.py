@@ -83,14 +83,17 @@ class DobotNova5DHConfig(RobotConfig):
 
     # Right-arm Cartesian safety workspace, in metres.
     enable_clip: bool = True
-    workspace_min_xyz_m: list[float] = field(default_factory=lambda: [-0.60, -0.15, -0.167])
-    workspace_max_xyz_m: list[float] = field(default_factory=lambda: [0.68, 0.62, 0.69])
+    workspace_min_xyz_m: list[float] = field(default_factory=lambda: [-0.60, -0.25, -0.167])
+    workspace_max_xyz_m: list[float] = field(default_factory=lambda: [0.75, 0.70, 0.69])
 
     home_point_list: list[float] = field(
-        default_factory=lambda: [220, 0, 135, -80, -88, 0]
+        # default_factory=lambda: [220, 0, 135, -80, -88, 0]
+        default_factory=lambda: [190, -12, 110, -25, -96, 10]
     )
     start_position_degree: list[float] = field(
-        default_factory=lambda: [220, 0, 135, -80, -88, 0]
+        # default_factory=lambda: [220, 0, 135, -80, -88, 0]
+        # default_factory=lambda: [220, 0, 135, -80, -88, 0]
+        default_factory=lambda: [190, -12, 110, -25, -96, 10]
     )
     start_vel_scale: int = 30
 

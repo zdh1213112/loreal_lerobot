@@ -272,7 +272,7 @@ class DobotNova5DH(Robot):
             if int(self._feed_data.Tool) == tool_index:
                 return
             time.sleep(0.02)
-        self.logger.warning(
+        self.logger.warn(
             f"Right feedback Tool index did not update to {tool_index} within {timeout_s:.1f}s "
             f"(current={self._feed_data.Tool}); continuing with Dashboard Tool setting."
         )
@@ -427,7 +427,7 @@ class DobotNova5DH(Robot):
                 self._wait_for_command_id(int(float(values[0])), description)
                 return
             except (ValueError, TypeError):
-                self.logger.warning(
+                self.logger.warn(
                     f"Right {description} command ID parse failed ({values}); "
                     "falling back to joint-error completion check."
                 )
@@ -479,7 +479,7 @@ class DobotNova5DH(Robot):
                     with contextlib.suppress(Exception):
                         self._gripper_robot.close()
                     self._gripper_robot = None
-                self.logger.warning(
+                self.logger.warn(
                     "Right dedicated gripper Dashboard failed; falling back to the shared "
                     f"robot Dashboard: {exception}"
                 )
@@ -522,7 +522,7 @@ class DobotNova5DH(Robot):
             self._wait_for_first_feedback()
 
             if int(self._feed_data.RobotMode) == 9:
-                self.logger.warning(
+                self.logger.warn(
                     "Right robot is in error mode before enabling; trying ClearError."
                 )
                 self._raise_if_dobot_error(
@@ -541,7 +541,7 @@ class DobotNova5DH(Robot):
                         f"{enable_response.strip()} (RobotMode={current_mode}); "
                         f"GetErrorID: {self._dobot_error_detail()}"
                     )
-                self.logger.warning(
+                self.logger.warn(
                     f"Right EnableRobot returned {enable_error}, but RobotMode={current_mode}; "
                     "continuing with the existing enabled/control state."
                 )
@@ -799,14 +799,14 @@ class DobotNova5DH(Robot):
         if error_id != 0:
             return None
         if len(values) < JOINT_DOF:
-            self.logger.warning(
+            self.logger.warn(
                 f"{command_name} returned too few joint values: {response.strip()}"
             )
             return None
         try:
             return np.asarray(values[:JOINT_DOF], dtype=np.float64)
         except ValueError:
-            self.logger.warning(
+            self.logger.warn(
                 f"{command_name} returned invalid joint values: {response.strip()}"
             )
             return None
@@ -851,7 +851,7 @@ class DobotNova5DH(Robot):
             if target_joint is not None:
                 now = time.perf_counter()
                 if now - self._last_cartesian_guard_log_s >= 1.0:
-                    self.logger.warning(
+                    self.logger.warn(
                         "Right Cartesian target was rejected by the IK guard; "
                         f"backing off to {ratio:.2f} of the requested step near "
                         f"pose={target_pose_mm_deg.tolist()}"
@@ -861,7 +861,7 @@ class DobotNova5DH(Robot):
 
         now = time.perf_counter()
         if now - self._last_cartesian_guard_log_s >= 1.0:
-            self.logger.warning(
+            self.logger.warn(
                 "Right Cartesian target was rejected by the IK guard; holding the "
                 f"current pose near a singularity for target={target_pose_mm_deg.tolist()}"
             )
@@ -1021,7 +1021,7 @@ class DobotNova5DH(Robot):
                 self._log_cartesian_command_failure(
                     original_response, "right ServoJ fallback"
                 )
-            self.logger.warning(
+            self.logger.warn(
                 f"Right ServoJ fallback failed; skipping this frame: {exception}"
             )
 
@@ -1088,7 +1088,7 @@ class DobotNova5DH(Robot):
                         "worker_error_count": float(self._async_action_error_count),
                         "queue_drop_count": float(self._async_action_drop_count),
                     }
-                self.logger.warning(
+                self.logger.warn(
                     f"Async action worker skipped a failed action: {exception}"
                 )
             finally:
@@ -1171,7 +1171,7 @@ class DobotNova5DH(Robot):
             timing["fault_diagnostics_ms"] = (
                 time.perf_counter() - diagnostics_start
             ) * 1e3
-            self.logger.warning(
+            self.logger.warn(
                 "Right robot fault detected; trying ClearError and skipping this frame. "
                 f"GetErrorID: {self._dobot_error_detail()}"
             )
@@ -1223,7 +1223,7 @@ class DobotNova5DH(Robot):
 
     def disconnect(self) -> None:
         if not self._is_connected:
-            self.logger.warning(f"{self} is not connected; skipping disconnect.")
+            self.logger.warn(f"{self} is not connected; skipping disconnect.")
             return
         try:
             self.logger.info("Disconnecting the Dobot Nova5 right arm...")
@@ -1232,7 +1232,7 @@ class DobotNova5DH(Robot):
                 try:
                     self._go_to_home()
                 except Exception as exception:
-                    self.logger.warning(
+                    self.logger.warn(
                         f"Failed to move right arm home before disconnect: {exception}"
                     )
 
