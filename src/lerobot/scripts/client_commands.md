@@ -57,16 +57,16 @@ lerobot-record \
 lerobot-record \
     --robot.type=dobot_nova5_dh \
     --teleop.type=pico4 \
-    --dataset.repo_id=Xense/loreal_returns_sorting_0820 \
-    --dataset.num_episodes=2 \
+    --dataset.repo_id=Xense/loreal_returns_sorting_0831 \
+    --dataset.num_episodes=5 \
     --dataset.single_task="Pick up returned cosmetic from conveyor, place neatly on left platform." \
     --dataset.fps=30 \
-    --dataset.episode_time_s=500 \
-    --dataset.reset_time_s=100 \
+    --dataset.episode_time_s=1000 \
+    --dataset.reset_time_s=500 \
     --dataset.streaming_encoding=true \
     --dataset.vcodec=auto \
-    --resume=false \
-    --dataset.push_to_hub=false \
+    --resume=true \
+    --dataset.push_to_hub=true \
     --display_data=false
 ```
 
@@ -533,7 +533,7 @@ Other record-control shortcuts are currently keyboard-driven:
 
 ```bash
 lerobot-teleoperate \
-    --robot.type=bi_dobot_nova5_dh \
+    --robot.type=dobot_nova5_dh \
     --teleop.type=bi_pico4 \
     --fps=30 \
     --display_data=false \

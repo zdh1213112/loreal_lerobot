@@ -94,7 +94,9 @@ from lerobot.utils.visualization_utils import init_rerun, log_rerun_data
 
 logger = get_logger("lerobot_record")
 
-BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES = 10
+DOBOT_RESET_BOUNDARY_ALIGN_FRAMES = 10
+# Backward-compatible constant name from when only the bimanual loop used this boundary.
+BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES = DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
 
 _BUILTIN_CAMERA_CONFIG_MODULES = (
     "lerobot.cameras.opencv.configuration_opencv",
@@ -1457,7 +1459,7 @@ def pylibfranka_research3_record_loop(
 
 
 @safe_stop_image_writer
-def bi_dobot_nova5_dh_record_loop(
+def dobot_nova5_dh_record_loop(
     robot: Robot,
     events: dict,
     fps: int,
@@ -1479,6 +1481,7 @@ def bi_dobot_nova5_dh_record_loop(
     single_task: str | None = None,
     display_data: bool = False,
 ):
+    """Record mono- or bimanual Dobot Nova5 DH teleoperation, including reset trajectories."""
     if dataset is not None and dataset.fps != fps:
         raise ValueError(
             f"The dataset fps should be equal to requested fps ({dataset.fps} != {fps})."
@@ -1489,7 +1492,7 @@ def bi_dobot_nova5_dh_record_loop(
 
     if policy is not None or preprocessor is not None or postprocessor is not None:
         raise ValueError(
-            "BiDobot Nova5 DH passthrough record mode is teleop-only. "
+            "Dobot Nova5 DH passthrough record mode is teleop-only. "
             "Do not provide policy or processor overrides."
         )
 
@@ -1547,6 +1550,11 @@ def bi_dobot_nova5_dh_record_loop(
                     or probe_action.get("right_arm.enabled", False)
                 )
                 _sync_rt_teleop_to_robot_pose(robot, teleop)
+            elif isinstance(teleop, Teleoperator) and teleop.name == "pico4":
+                pose = robot.get_current_tcp_pose_quat()
+                teleop.get_action(current_tcp_pose_quat=pose)
+                grip_active = bool(getattr(teleop, "_enabled", False))
+                _sync_rt_teleop_to_robot_pose(robot, teleop)
 
             if not grip_active:
                 post_reset_wait_grip_release = False
@@ -1594,7 +1602,7 @@ def bi_dobot_nova5_dh_record_loop(
                     ) * 1e3
 
                 prev_reset_observation_frame = None
-                post_reset_skip_frames = BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
+                post_reset_skip_frames = DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
                 post_reset_wait_grip_release = True
                 is_resetting = False
                 _sync_rt_teleop_to_robot_pose(robot, teleop)
@@ -1670,11 +1678,15 @@ def bi_dobot_nova5_dh_record_loop(
             timestamp = time.perf_counter() - start_episode_t
             continue
 
-        if events["go_start"] and isinstance(teleop, Teleoperator) and teleop.name == "bi_pico4":
+        if (
+            events["go_start"]
+            and isinstance(teleop, Teleoperator)
+            and teleop.name in {"pico4", "bi_pico4"}
+        ):
             events["go_start"] = False
             if hasattr(robot, "reset_to_initial_position"):
                 rewritten = _rewrite_recent_actions_from_observations(
-                    dataset, count=BI_DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
+                    dataset, count=DOBOT_RESET_BOUNDARY_ALIGN_FRAMES
                 )
                 if rewritten > 0:
                     logger.info(
@@ -1746,23 +1758,27 @@ def bi_dobot_nova5_dh_record_loop(
 
         section_t = time.perf_counter()
         sent_action = robot.send_action(robot_action_to_send)
-        sent_action = _align_disabled_bimanual_arm_actions_to_observation(
-            sent_action,
-            teleop_action,
-            obs_processed,
-        )
+        if teleop.name == "bi_pico4":
+            action_to_record = _align_disabled_bimanual_arm_actions_to_observation(
+                sent_action,
+                teleop_action,
+                obs_processed,
+            )
+        else:
+            # Preserve the original mono-arm record_loop behavior outside reset boundaries.
+            action_to_record = action_values
         loop_timing["send_action_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if dataset is not None:
             section_t = time.perf_counter()
-            action_frame = build_dataset_frame(dataset.features, sent_action, prefix=ACTION)
+            action_frame = build_dataset_frame(dataset.features, action_to_record, prefix=ACTION)
             frame = {**observation_frame, **action_frame, "task": single_task}
             dataset.add_frame(frame)
             loop_timing["dataset_ms"] = (time.perf_counter() - section_t) * 1e3
 
         if display_data:
             section_t = time.perf_counter()
-            log_rerun_data(observation=obs_processed, action=sent_action)
+            log_rerun_data(observation=obs_processed, action=action_to_record)
             loop_timing["display_ms"] = (time.perf_counter() - section_t) * 1e3
 
         loop_timing["pre_sleep_total_ms"] = (time.perf_counter() - start_loop_t) * 1e3
@@ -1776,6 +1792,10 @@ def bi_dobot_nova5_dh_record_loop(
         )
 
         timestamp = time.perf_counter() - start_episode_t
+
+
+# Backward-compatible name for callers that imported the original bimanual-only loop.
+bi_dobot_nova5_dh_record_loop = dobot_nova5_dh_record_loop
 
 
 @safe_stop_image_writer
@@ -2363,8 +2383,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                         single_task=cfg.dataset.single_task,
                         display_data=cfg.display_data,
                     )
-                elif cfg.robot.type == "bi_dobot_nova5_dh":
-                    bi_dobot_nova5_dh_record_loop(
+                elif cfg.robot.type in {"dobot_nova5_dh", "bi_dobot_nova5_dh"}:
+                    dobot_nova5_dh_record_loop(
                         robot=robot,
                         events=events,
                         fps=cfg.dataset.fps,
@@ -2486,8 +2506,8 @@ def record(cfg: RecordConfig) -> LeRobotDataset:
                             single_task=cfg.dataset.single_task,
                             display_data=cfg.display_data,
                         )
-                    elif cfg.robot.type == "bi_dobot_nova5_dh":
-                        bi_dobot_nova5_dh_record_loop(
+                    elif cfg.robot.type in {"dobot_nova5_dh", "bi_dobot_nova5_dh"}:
+                        dobot_nova5_dh_record_loop(
                             robot=robot,
                             events=events,
                             fps=cfg.dataset.fps,

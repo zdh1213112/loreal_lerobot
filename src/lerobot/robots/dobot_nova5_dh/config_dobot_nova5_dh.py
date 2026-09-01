@@ -95,7 +95,7 @@ class DobotNova5DHConfig(RobotConfig):
         # default_factory=lambda: [220, 0, 135, -80, -88, 0]
         default_factory=lambda: [190, -12, 110, -25, -96, 10]
     )
-    start_vel_scale: int = 30
+    start_vel_scale: int = 60
 
     # DH Robotics AG-95 through the arm's built-in RS485 end-effector port.
     use_gripper: bool = True

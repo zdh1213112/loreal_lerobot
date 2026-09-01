@@ -56,8 +56,8 @@ class Pico4Config(TeleoperatorConfig):
 
     use_left_controller: bool = False
     use_right_controller: bool = True
-    pos_sensitivity: float = 1.2  # Scale factor for position delta (1.0 = 1:1 mapping, 0.5 = half speed)
-    ori_sensitivity: float = 1.2  # Scale factor for orientation delta (1.0 = 1:1 mapping)
+    pos_sensitivity: float = 1.4  # Scale factor for position delta (1.0 = 1:1 mapping, 0.5 = half speed)
+    ori_sensitivity: float = 1.4  # Scale factor for orientation delta (1.0 = 1:1 mapping)
     filter_window_size: int = 1  # Moving average filter window size
     gripper_width: float = 1.0  # Maximum gripper position in control space [0, 1]
     grip_enable_threshold: float = 0.5  # Threshold for grip to enable control (must exceed to enable)
