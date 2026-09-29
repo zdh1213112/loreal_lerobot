@@ -66,9 +66,22 @@ lerobot-record \
     --dataset.streaming_encoding=true \
     --dataset.vcodec=auto \
     --resume=true \
-    --dataset.push_to_hub=true \
+    --dataset.push_to_hub=false \
     --display_data=false
 ```
+
+## Delete an episode from a local dataset
+
+```bash
+lerobot-edit-dataset \
+    --repo_id Xense/loreal_returns_sorting_0928 \
+    --operation.type delete_episodes \
+    --operation.episode_indices "[64]"
+```
+
+The command reads the dataset from the local LeRobot cache and does not push changes to Hugging Face Hub.
+Before rebuilding the dataset, it moves the original dataset to a sibling directory with the `_old` suffix.
+The remaining episodes are reindexed starting from `0`.
 
 ## BiARX5 Robot lerobot-teleoperate command
 

@@ -50,6 +50,7 @@ from lerobot.datasets.utils import (
     write_stats,
     write_tasks,
 )
+from lerobot.datasets.video_utils import resolve_vcodec
 from lerobot.utils.constants import HF_LEROBOT_HOME
 
 
@@ -590,6 +591,12 @@ def _keep_episodes_from_video_with_av(
 
     if not episodes_to_keep:
         raise ValueError("No episodes to keep")
+
+    # PyAV expects a concrete encoder name and does not recognize LeRobot's
+    # special "auto" value. Use the software H.264 encoder here because this
+    # synchronous editing path must also work when a hardware codec is
+    # installed but its device is unavailable.
+    vcodec = resolve_vcodec("h264" if vcodec == "auto" else vcodec)
 
     in_container = av.open(str(input_path))
 

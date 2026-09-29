@@ -108,7 +108,7 @@ class DobotNova5DHConfig(RobotConfig):
     tool_identify: int = 1
     dh_gripper_slave_id: int = 1
     dh_gripper_baudrate: int = 115200
-    dh_gripper_force: int = 33
+    dh_gripper_force: int = 45
     dh_gripper_init_open: bool = True
     dh_gripper_worker_frequency: float = 50.0
     dh_gripper_position_poll_frequency: float = 0.0
